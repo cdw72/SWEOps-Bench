@@ -1,0 +1,42 @@
+{
+  "case_id": "cnpgop-11042",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle-cnpg.yaml",
+  "operator_ready": [
+    "-n cnpg-system get deploy cnpg-controller-manager",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cr-11042.yaml",
+      "ns": "default",
+      "settle": 900,
+      "timeout": 1200
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n default get cluster cluster -o jsonpath={.status.phase}",
+      "Setting up primary"
+    ],
+    [
+      "-n default get job cluster-1-initdb -o jsonpath={.status.conditions[*].type}",
+      "Failed"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "cnpg-system"
+  ],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 900
+    }
+  ],
+  "poll_fault_script": "poll-inject.sh",
+  "poll_fault_settle": 900
+}

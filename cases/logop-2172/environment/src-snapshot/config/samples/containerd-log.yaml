@@ -1,0 +1,41 @@
+# start minikube with containerd
+#     minikube start --driver=docker --container-runtime=containerd
+# install some workload that generates json and non-json logs
+#     helm upgrade --install log-generator kube-logging/log-generator --set app.golang=true
+# verify produced logs in the fluentd container (json logs should be expanded)
+#     kubectl exec -ti containerd-fluentd-0 -- tail -f /fluentd/log/out
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Logging
+metadata:
+  name: containerd
+spec:
+  enableDockerParserCompatibilityForCRI: true
+  fluentd: {}
+  controlNamespace: default
+  fluentbit: {}
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: all
+spec:
+  filters:
+    # for debugging
+    - stdout: {}
+    # With `enableDockerParserCompatibilityForCRI: true` key and key_name are
+    # set to "log" otherwise these are set to "message" if the runtime is CRI
+    #- concat:
+    #    key: log
+    #- parser:
+    #    key_name: log
+  match:
+    - select: {}
+  localOutputRefs:
+    - "null"
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Output
+metadata:
+  name: "null"
+spec:
+  nullout: {}

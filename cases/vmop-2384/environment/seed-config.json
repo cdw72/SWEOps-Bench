@@ -1,0 +1,45 @@
+{
+  "case_id": "vmop-2384",
+  "operator_ready_timeout": 900,
+  "ensure_ns": [
+    "vm"
+  ],
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n vm get deploy operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "default",
+      "settle": 120
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [
+    [
+      "get role monitoring:default:vmsingle-vmsingle -o jsonpath={.rules[0].verbs}",
+      "get watch"
+    ]
+  ],
+  "image_rewrites": [],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 60
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/mutated-000.yaml"
+    ]
+  ],
+  "poll_fault_settle": 120
+}

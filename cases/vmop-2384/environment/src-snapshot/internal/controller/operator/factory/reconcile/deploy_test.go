@@ -1,0 +1,217 @@
+package reconcile
+
+import (
+	"context"
+	"testing"
+	"testing/synctest"
+
+	"github.com/stretchr/testify/assert"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
+
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/k8stools"
+)
+
+func TestDeployReconcile(t *testing.T) {
+	type opts struct {
+		new, prev         *appsv1.Deployment
+		predefinedObjects []runtime.Object
+		actions           []k8stools.ClientAction
+		validate          func(*appsv1.Deployment)
+		wantErr           bool
+		o                 *DeploymentOpts
+	}
+	getDeploy := func(fns ...func(d *appsv1.Deployment)) *appsv1.Deployment {
+		d := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-1",
+				Namespace: "default",
+			},
+			Spec: appsv1.DeploymentSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"label": "value",
+					},
+				},
+				Replicas: ptr.To[int32](1),
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"label": "value"},
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:            "vmalert",
+								ImagePullPolicy: "IfNowPresent",
+								Image:           "some-image:tag",
+							},
+						},
+					},
+				},
+			},
+			Status: appsv1.DeploymentStatus{
+				Conditions: []appsv1.DeploymentCondition{
+					{
+						Type:   appsv1.DeploymentProgressing,
+						Reason: "NewReplicaSetAvailable",
+						Status: "True",
+					},
+				},
+				ReadyReplicas:   1,
+				UpdatedReplicas: 1,
+				Replicas:        1,
+			},
+		}
+		for _, fn := range fns {
+			fn(d)
+		}
+		return d
+	}
+	f := func(o opts) {
+		t.Helper()
+		ctx := context.Background()
+		cl := k8stools.GetTestClientWithActionsAndObjects(o.predefinedObjects)
+		synctest.Test(t, func(t *testing.T) {
+			err := Deployment(ctx, cl, o.new, o.prev, nil, o.o)
+			if o.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, o.actions, cl.Actions)
+			if o.validate != nil {
+				var got appsv1.Deployment
+				nsn := types.NamespacedName{Name: o.new.Name, Namespace: o.new.Namespace}
+				assert.NoError(t, cl.Get(ctx, nsn, &got))
+				o.validate(&got)
+			}
+		})
+	}
+
+	nn := types.NamespacedName{Name: "test-1", Namespace: "default"}
+
+	// create deployment
+	f(opts{
+		new: getDeploy(),
+		actions: []k8stools.ClientAction{
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+			{Verb: "Create", Kind: "Deployment", Resource: nn},
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+		},
+	})
+
+	// no updates
+	f(opts{
+		new:  getDeploy(),
+		prev: getDeploy(),
+		predefinedObjects: []runtime.Object{
+			getDeploy(),
+		},
+		actions: []k8stools.ClientAction{
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+		},
+	})
+
+	// update spec
+	f(opts{
+		new: getDeploy(func(d *appsv1.Deployment) {
+			d.Spec.Template.Annotations = map[string]string{"new-annotation": "value"}
+		}),
+		prev: getDeploy(),
+		predefinedObjects: []runtime.Object{
+			getDeploy(),
+		},
+		actions: []k8stools.ClientAction{
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+			{Verb: "Update", Kind: "Deployment", Resource: nn},
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+		},
+	})
+
+	// no update, only status change
+	f(opts{
+		new: getDeploy(),
+		prev: getDeploy(func(d *appsv1.Deployment) {
+			d.Spec.Template.Annotations = map[string]string{
+				"new-annotation": "value",
+			}
+		}),
+		predefinedObjects: []runtime.Object{
+			getDeploy(func(d *appsv1.Deployment) {
+				d.Status.ReadyReplicas = 1
+				d.Status.Conditions[0].Reason = "ReplicaSetUpdated"
+			}),
+		},
+		actions: []k8stools.ClientAction{
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+		},
+	})
+
+	// do not update with custom patch
+	f(opts{
+		new: getDeploy(func(d *appsv1.Deployment) {
+			d.Spec.Replicas = ptr.To[int32](1)
+		}),
+		prev: getDeploy(func(d *appsv1.Deployment) {
+			d.Spec.Template.Annotations = map[string]string{
+				"new-annotation": "value",
+			}
+		}),
+		predefinedObjects: []runtime.Object{
+			getDeploy(func(d *appsv1.Deployment) {
+				d.Spec.Replicas = ptr.To[int32](2)
+				d.Status.ReadyReplicas = 2
+				d.Status.UpdatedReplicas = 2
+				d.Status.Replicas = 2
+				d.Status.Conditions[0].Reason = "ReplicaSetUpdated"
+			}),
+		},
+		actions: []k8stools.ClientAction{
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+		},
+		o: &DeploymentOpts{
+			PatchSpec: func(existingSpec, newSpec *appsv1.DeploymentSpec) {
+				newSpec.Replicas = nil
+			},
+		},
+	})
+
+	// update image when HPA has scaled replicas beyond CR desired count
+	// this is the regression test for https://github.com/VictoriaMetrics/operator/issues/2324
+	f(opts{
+		new: getDeploy(func(d *appsv1.Deployment) {
+			d.Spec.Template.Spec.Containers[0].Image = "some-image:new-tag"
+		}),
+		prev: getDeploy(),
+		predefinedObjects: []runtime.Object{
+			getDeploy(func(d *appsv1.Deployment) {
+				d.Spec.Replicas = ptr.To[int32](4)
+				d.Status.ReadyReplicas = 4
+				d.Status.UpdatedReplicas = 4
+				d.Status.Replicas = 4
+				d.Status.Conditions[0].Reason = "ReplicaSetUpdated"
+			}),
+		},
+		actions: []k8stools.ClientAction{
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+			{Verb: "Update", Kind: "Deployment", Resource: nn},
+			{Verb: "Get", Kind: "Deployment", Resource: nn},
+		},
+		o: &DeploymentOpts{
+			PatchSpec: func(existingSpec, newSpec *appsv1.DeploymentSpec) {
+				newSpec.Replicas = nil
+			},
+		},
+		validate: func(d *appsv1.Deployment) {
+			assert.Equal(t, "some-image:new-tag", d.Spec.Template.Spec.Containers[0].Image)
+			assert.Equal(t, ptr.To[int32](4), d.Spec.Replicas)
+		},
+	})
+}

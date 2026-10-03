@@ -1,0 +1,9 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaNotificationPolicy
+metadata:
+  name: test
+status:
+  conditions:
+  - type: NotificationPolicySynchronized
+    reason: ApplySuccessful
+    status: "True"

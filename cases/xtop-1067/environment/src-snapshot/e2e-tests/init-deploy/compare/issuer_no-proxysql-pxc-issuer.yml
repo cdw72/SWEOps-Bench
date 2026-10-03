@@ -1,0 +1,8 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  generation: 1
+  name: no-proxysql-pxc-issuer
+spec:
+  ca:
+    secretName: no-proxysql-ca-cert

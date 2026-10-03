@@ -1,0 +1,54 @@
+{
+  "case_id": "rdoptwo-286",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_f1c547e.yaml",
+  "operator_ready": [
+    "-n redis-operator get deploy redis-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "redis-operator",
+      "wait": [
+        [
+          "get sts test-cluster-leader -o jsonpath={.status.readyReplicas}",
+          "3"
+        ]
+      ],
+      "timeout": 420
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "redis-operator",
+      "settle": 60
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [
+    [
+      "-n redis-operator get pods -l control-plane=redis-operator -o jsonpath={.items[*].status.containerStatuses[*].lastState.terminated.exitCode}",
+      "2"
+    ],
+    [
+      "-n redis-operator get sts test-cluster-leader -o jsonpath={.status.readyReplicas}",
+      "3"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "redis-operator"
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "redis-operator",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 60
+}

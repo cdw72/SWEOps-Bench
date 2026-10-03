@@ -1,0 +1,32 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  labels:
+    dashboards: "grafana"
+spec:
+  config:
+    security:
+      admin_user: root
+      admin_password: secret
+
+  # Optionally Configure the deployment spec
+  # Modifications to the securityContext and readinessProbe
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: grafana
+              securityContext:
+                # Customize this in case your volume provider needs specific UIDs/GIDs
+                runAsUser: 1001
+                runAsGroup: 1001
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+
+  # If needed, the default securityContext can be disabled
+  disableDefaultSecurityContext: Pod # Pod, Container, All

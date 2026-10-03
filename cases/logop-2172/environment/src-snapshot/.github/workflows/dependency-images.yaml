@@ -1,0 +1,75 @@
+name: Dependency images
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: Publish artifacts to the artifact store
+        default: false
+        required: false
+        type: boolean
+      fluentd-image-types:
+        description: 'Types of images to build (comma-separated: base,filters,full)'
+        type: string
+        default: 'base,filters,full'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  fluentd-images:
+    name: Fluentd images
+    uses: ./.github/workflows/fluentd-images.yaml
+    with:
+      publish: ${{ inputs.publish }}
+      fluentd-image-types: ${{ inputs.fluentd-image-types }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+
+  config-reloader:
+    name: Config reloader
+    uses: ./.github/workflows/config-reloader.yaml
+    with:
+      publish: ${{ inputs.publish }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+
+  syslog-ng-reloader:
+    name: Syslog-ng reloader
+    uses: ./.github/workflows/syslog-ng-reloader.yaml
+    with:
+      publish: ${{ inputs.publish }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+
+  fluentd-drain-watch:
+    name: Fluentd drain watch
+    uses: ./.github/workflows/fluentd-drain-watch.yaml
+    with:
+      publish: ${{ inputs.publish }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+
+  node-exporter:
+    name: Node exporter
+    uses: ./.github/workflows/node-exporter.yaml
+    with:
+      publish: ${{ inputs.publish }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write

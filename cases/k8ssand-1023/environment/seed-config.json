@@ -1,0 +1,51 @@
+{
+  "case_id": "k8ssand-1023",
+  "k8s_version": "v1.21",
+  "operator_bundle": "controller-manifest.yaml",
+  "operator_ready": [
+    "-n default get deploy cass-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cdc-1.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get sts cluster1-cassandra-datacenter-default-sts -o jsonpath={.metadata.name}",
+          "cluster1-cassandra-datacenter-default-sts"
+        ]
+      ],
+      "timeout": 300,
+      "settle": 300
+    }
+  ],
+  "settle_sec": 120,
+  "fault_verify": [
+    [
+      "-n default get events --field-selector reason=FailedMount -o jsonpath={.items[*].message}",
+      "encryption-cred-storage"
+    ],
+    [
+      "-n default get pod cluster1-cassandra-datacenter-default-sts-0 -o jsonpath={.status.phase}",
+      "Pending"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "default"
+  ],
+  "pre_manifests": [
+    "sieve-global-config.yaml",
+    "storageClass.yaml",
+    "k8ssand-1023-crd-patched.yaml",
+    "cassandra-datacenter-ca-keystore.yaml"
+  ],
+  "poll_skip_pre": [
+    "cassandra-datacenter-ca-keystore.yaml"
+  ],
+  "poll_pre_sequence": [],
+  "poll_fault_script": "poll-inject.sh",
+  "poll_fault_settle": 300
+}

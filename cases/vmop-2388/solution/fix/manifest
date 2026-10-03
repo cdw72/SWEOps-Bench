@@ -1,0 +1,5 @@
+api/operator/v1beta1/vmalert_types.go
+internal/controller/operator/factory/vmalert/rules.go
+internal/controller/operator/factory/vmalert/vmalert.go
+internal/controller/operator/vmalert_controller.go
+internal/controller/operator/vmrule_controller.go

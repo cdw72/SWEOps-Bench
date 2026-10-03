@@ -1,0 +1,131 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+test_dir=$(realpath $(dirname $0))
+. ${test_dir}/../functions
+cluster="operator-chaos"
+
+fail_pod() {
+	local init_pod=$(get_operator_pod)
+	local restart_count_before=$(kubectl_bin get pod ${init_pod} --namespace="${OPERATOR_NS:-$namespace}" -ojsonpath='{.status.containerStatuses[0].restartCount}')
+
+	cat $conf_dir/chaos-pod-failure.yml \
+		| yq w - "metadata.name" "chaos-operator-pod-failure" \
+		| yq d - "spec.selector.pods.test-namespace" \
+		| yq w - "spec.selector.pods.$test_namespace[0]" "$init_pod" \
+		| kubectl_bin apply --namespace $test_namespace -f-
+	sleep 10
+
+	desc 'check if operator works fine: scale down from 5 to 3'
+	kubectl scale --replicas=3 pxc/$cluster
+	sleep 60
+
+	local pod=$(get_operator_pod)
+	local restart_count_after=$(kubectl_bin get pod ${pod} --namespace="${OPERATOR_NS:-$namespace}" -ojsonpath='{.status.containerStatuses[0].restartCount}')
+	if [ "$init_pod" != "$pod" ]; then
+		echo "Operator pod was killed, when it should have just been restarted."
+		echo "Pod name before: $init_pod , pod name after test: $pod"
+		return 1
+	elif [ $restart_count_before -eq $restart_count_after ]; then
+		echo "Seems operator pod was not restarted when it should have been."
+		echo "Pod: $pod , restarts before: $restart_count_before , restarts after test: $restart_count_after"
+		return 1
+	fi
+
+	if [ -n "$OPERATOR_NS" ]; then
+		kubectl_bin config set-context $(kubectl_bin config current-context) --namespace="$OPERATOR_NS"
+	fi
+	# check if Pod started
+	wait_pod $pod
+	kubectl_bin config set-context $(kubectl_bin config current-context) --namespace="$namespace"
+
+	# check scale down
+	wait_for_delete pod/$cluster-pxc-3
+}
+
+network_loss() {
+	local pod=$(get_operator_pod)
+
+	cat $conf_dir/chaos-network-loss.yml \
+		| yq w - "metadata.name" "chaos-operator-network" \
+		| yq d - "spec.selector.pods.test-namespace" \
+		| yq w - "spec.selector.pods.$test_namespace[0]" "$init_pod" \
+		| kubectl_bin apply --namespace $test_namespace -f-
+	sleep 10
+
+	desc 'check if operator works fine: scale up from 3 to 5'
+	kubectl scale --replicas=5 pxc/$cluster
+	sleep 10
+
+	if [ -n "$OPERATOR_NS" ]; then
+		kubectl_bin config set-context $(kubectl_bin config current-context) --namespace="$OPERATOR_NS"
+	fi
+	# check if Pod started
+	wait_pod $pod
+	kubectl_bin config set-context $(kubectl_bin config current-context) --namespace="$namespace"
+
+	# check scale up
+	wait_for_running "$cluster-pxc" 5
+}
+
+kill_pod() {
+	local init_pod=$(get_operator_pod)
+
+	cat $conf_dir/chaos-pod-kill.yml \
+		| yq w - "metadata.name" "chaos-operator-pod-kill" \
+		| yq d - "spec.selector.pods.test-namespace" \
+		| yq w - "spec.selector.pods.$test_namespace[0]" "$init_pod" \
+		| kubectl_bin apply --namespace $test_namespace -f-
+	sleep 10
+
+	local pod=$(get_operator_pod)
+	if [ "$init_pod" == "$pod" ]; then
+		echo "operator pod was not killed! something went wrong."
+		return 1
+	fi
+
+	desc 'check if operator works fine: scale up from 3 to 5'
+	kubectl scale --replicas=5 pxc/$cluster
+	sleep 10
+
+	if [ -n "$OPERATOR_NS" ]; then
+		kubectl_bin config set-context $(kubectl_bin config current-context) --namespace="$OPERATOR_NS"
+	fi
+	# check if Pod started
+	wait_pod $pod
+	kubectl_bin config set-context $(kubectl_bin config current-context) --namespace="$namespace"
+
+	# check scale up
+	wait_for_running "$cluster-pxc" 5
+}
+
+main() {
+	create_infra $namespace
+
+	test_namespace=$namespace
+	if [ -n "$OPERATOR_NS" ]; then
+		kubectl_bin patch clusterrole percona-xtradb-cluster-operator --type=json -p '[{"op":"remove","path":"/rules/1"}]'
+		kubectl_bin delete validatingwebhookconfigurations.admissionregistration.k8s.io percona-xtradbcluster-webhook
+		test_namespace=$OPERATOR_NS
+	fi
+	deploy_chaos_mesh $test_namespace
+
+	desc 'create PXC cluster'
+	spinup_pxc "$cluster" "$test_dir/conf/$cluster.yml"
+
+	desc 'kill operator'
+	kill_pod
+
+	desc 'fail operator pod for 60s'
+	fail_pod
+
+	desc 'emulate bad network for 60s'
+	network_loss
+
+	destroy_chaos_mesh
+	destroy $namespace
+}
+
+main

@@ -1,0 +1,56 @@
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisCluster
+metadata:
+  name: test-cluster
+spec:
+  TLS:
+    ca: ca.crt
+    cert: tls.crt
+    key: tls.key
+    secret:
+      secretName: redis-tls-cert
+  clusterSize: 3
+  clusterVersion: v7
+  env:
+  - name: REDIS_TLS_CA_KEY
+    value: /tls/ca.crt
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.0.15
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 101m
+        memory: 512Mi
+      requests:
+        cpu: 101m
+        memory: 512Mi
+  redisFollower:
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+    redisConfig:
+      additionalRedisConfig: redis-tls-config
+  redisLeader:
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+    redisConfig:
+      additionalRedisConfig: redis-tls-config

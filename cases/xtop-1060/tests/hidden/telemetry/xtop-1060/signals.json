@@ -1,0 +1,28 @@
+{
+ "case": "xtop-1060",
+ "confirmed": [
+  {
+   "kind": "restart_count",
+   "target": "acto-namespace/percona-xtradb-cluster-operator/percona-xtradb-cluster-operator",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   }
+  },
+  {
+   "kind": "clog_sig",
+   "target": "panic: Malformed version",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 6,
+    "fixed": 0
+   },
+   "note": "\u8bed\u4e49\u6b63\u4e2d(2026-09-11 \u5168\u5e93\u91cd\u626b):panic \u6d88\u606f\u91cc\u5e26\u7740\u6ce8\u5165\u7684\u574f\u7248\u672c\u4e32('panic: Malformed version: ACTOKEY')6/0 \u2014\u2014 #1060 \u7248\u672c\u89e3\u6790 bug \u7684\u76f4\u63a5\u7269\u8bc1,restart_count \u53ea\u662f\u5b83\u7684\u6295\u5f71"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

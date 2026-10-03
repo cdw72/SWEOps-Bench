@@ -1,0 +1,36 @@
+name: shellcheck
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    env:
+      # renovate: datasource=github-releases depName=https://github.com/koalaman/shellcheck
+      SHELLCHECK_VERSION: v0.10.0
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: shellcheck ci scripts
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+        env:
+          SHELLCHECK_OPTS: -x -e SC2059 -e SC2086
+        with:
+          scandir: ".ci"
+          severity: warning
+          version: ${{ env.SHELLCHECK_VERSION }}
+      - name: shellcheck hack scripts
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+        env:
+          SHELLCHECK_OPTS: -x -e SC2059 -e SC2086
+        with:
+          scandir: "hack"
+          severity: warning
+          version: ${{ env.SHELLCHECK_VERSION }}

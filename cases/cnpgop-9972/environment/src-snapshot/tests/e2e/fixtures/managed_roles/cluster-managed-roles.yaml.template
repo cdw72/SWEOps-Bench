@@ -1,0 +1,75 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example-with-roles
+spec:
+  instances: 1 # this feature only requires a primary
+  imageName: "${POSTGRES_IMG}"
+  bootstrap:
+    initdb:
+      postInitApplicationSQL:
+      - ALTER ROLE app VALID UNTIL 'infinity'
+
+  storage:
+    size: 1Gi
+    storageClass: ${E2E_DEFAULT_STORAGE_CLASS}
+
+  managed:
+    roles:
+    - name: dante
+      ensure: present
+      comment: Dante Alighieri
+      login: true
+      superuser: false
+      createdb: true
+      createrole: false
+      inherit: false
+      replication: false
+      bypassrls: false
+      connectionLimit: 4
+      inRoles:
+        - pg_monitor
+        - pg_signal_backend
+      passwordSecret:
+        name: cluster-example-dante
+    - name: petrarca
+      ensure: present
+      comment: Francesco Petrarca
+      inRoles:
+        - foobar
+    - name:  boccaccio
+      ensure: present
+      comment: Giovanni Boccaccio
+      login: true
+    - name: app
+      createdb: true
+      login: true
+    - name: cavalcanti
+      login: true
+      passwordSecret:
+        name: cluster-example-cavalcanti
+
+---
+apiVersion: v1
+data:
+  username: ZGFudGU=
+  password: ZGFudGU=
+kind: Secret
+metadata:
+  name: cluster-example-dante
+  labels:
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+
+---
+apiVersion: v1
+data:
+  username: Y2F2YWxjYW50aQo=
+  password: U0NSQU0tU0hBLTI1NiQ0MDk2OlkyRjJZV3hqWVc1MGFRPT0kZUNJeW8yUUVadndsY01UaG0xendRRFBudzBqT0hsQ2FwQ0UrUUZwSHNHcz06WUtoU0VjZDRRaVgzU0J6bXRUT0hIQS85eWFUQkdKV0FNTXc3KzkyT3lITT0K
+kind: Secret
+metadata:
+  name: cluster-example-cavalcanti
+  labels:
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+

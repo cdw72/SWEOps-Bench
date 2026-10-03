@@ -1,0 +1,68 @@
+# To archiving walls on designated primary, We need to pass 'barmanObjectStore' information
+# under both the sections externalClusters and backup.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-archive-mode-always
+spec:
+  instances: 1
+
+  bootstrap:
+    pg_basebackup:
+      source: cluster-replica-src
+
+  replica:
+    enabled: true
+    source: cluster-replica-src
+
+  storage:
+    size: 1Gi
+    storageClass: ${E2E_DEFAULT_STORAGE_CLASS}
+
+  externalClusters:
+  - name: cluster-replica-src
+    connectionParameters:
+      host: cluster-replica-src-rw
+      user: userSrc
+      dbname: appSrc
+      port: "5432"
+    password:
+      name: cluster-replica-src-app
+      key: password
+
+    barmanObjectStore:
+      destinationPath: s3://replica-cluster/
+      endpointURL: https://minio-service.minio:9000
+      endpointCA:
+        key: ca.crt
+        name: minio-server-ca-secret
+      s3Credentials:
+        accessKeyId:
+          name: backup-storage-creds
+          key: ID
+        secretAccessKey:
+          name: backup-storage-creds
+          key: KEY
+      wal:
+        compression: gzip
+      data:
+        immediateCheckpoint: true
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://replica-cluster/
+      endpointURL: https://minio-service.minio:9000
+      endpointCA:
+        key: ca.crt
+        name: minio-server-ca-secret
+      s3Credentials:
+        accessKeyId:
+          name: backup-storage-creds
+          key: ID
+        secretAccessKey:
+          name: backup-storage-creds
+          key: KEY
+      wal:
+        compression: gzip
+      data:
+        immediateCheckpoint: true

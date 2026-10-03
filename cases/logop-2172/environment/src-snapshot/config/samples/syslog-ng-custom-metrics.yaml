@@ -1,0 +1,63 @@
+kind: Logging
+apiVersion: logging.banzaicloud.io/v1beta1
+metadata:
+  name: logging
+spec:
+  controlNamespace: default
+  fluentbit: {}
+  syslogNG:
+    metrics: {}
+    sourceMetrics:
+      - key: custom_input
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: SyslogNGFlow
+metadata:
+  name: all1
+spec:
+  match: {}
+  outputMetrics:
+    - key: custom_output
+      labels:
+        # destination, output_name, output_namespace, output_scope (local/global) and logging are automatically populated
+        #
+        # set any of the above to empty if it needs to be left out completely:
+        # destination: ""
+        #
+        # value can be a go template which can access .Destination.Name, .Destination.Namespace. .Destination.Scope, .Destination.Logging:
+        # destination: "{{ .Destination.Name }}"
+        flow: all1
+        output_namespace: ""
+  localOutputRefs:
+    - http
+  globalOutputRefs:
+    - http2
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: SyslogNGClusterFlow
+metadata:
+  name: all2
+spec:
+  match: {}
+  outputMetrics:
+    - key: custom_output
+      labels:
+        flow: all2
+  globalOutputRefs:
+    - http2
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: SyslogNGOutput
+metadata:
+  name: http
+spec:
+  file:
+    path: "/tmp/log"
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: SyslogNGClusterOutput
+metadata:
+  name: http2
+spec:
+  file:
+    path: "/tmp/log"

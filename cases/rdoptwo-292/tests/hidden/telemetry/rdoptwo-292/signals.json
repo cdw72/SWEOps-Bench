@@ -1,0 +1,18 @@
+{
+ "case": "rdoptwo-292",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "false_success_exec_292",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 6,
+    "fixed": 0
+   }
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,147 @@
+#!/bin/bash
+
+set -o errexit
+
+test_dir=$(realpath $(dirname $0))
+. ${test_dir}/../functions
+cluster="some-name"
+
+set_debug
+
+check_pod_restarted() {
+	local pod=$1
+	local nr_restarts=$(kubectl get pod $pod -ojson | jq '.status.containerStatuses[] | select(.name == "pxc").restartCount')
+
+	if [ $nr_restarts -eq 0 ]; then
+		echo "Chaos mesh didn't work for some reason. Please check!!!"
+		echo "Pod $pod restarts: $nr_restarts, but it should have been more!"
+		exit 1
+	fi
+}
+
+kill_pod() {
+	local pod=$1
+
+	yq eval '
+		.metadata.name = "chaos-pod-kill" |
+		del(.spec.selector.pods.test-namespace) |
+		.spec.selector.pods.'$namespace'[0] = "'$pod'"' $conf_dir/chaos-pod-kill.yml \
+		| kubectl apply -f -
+	sleep 5
+
+	# check if all 3 Pods started
+	wait_for_running $cluster-pxc 3
+	wait_cluster_consistency "$cluster" 3 2
+
+	desc 'check data consistency for chaosed Pod'
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $pod.$cluster-pxc -uroot -proot_password"
+}
+
+fail_pod() {
+	local pod=$1
+
+	# run chaos for Pod
+	yq eval '
+		.metadata.name = "chaos-pod-failure" |
+		del(.spec.selector.pods.test-namespace) |
+		.spec.selector.pods.'$namespace'[0] = "'$pod'"' $conf_dir/chaos-pod-failure.yml \
+		| kubectl apply -f -
+	sleep 10
+
+	# write data
+	run_mysql \
+		'INSERT myApp.myApp (id) VALUES (100501)' \
+		"-h $cluster-proxysql -uroot -proot_password"
+
+	# wait until the chaos stops
+	sleep 60
+
+	# check if all 3 Pods started
+	wait_for_running $cluster-pxc 3
+	wait_cluster_consistency "$cluster" 3 2
+
+	check_pod_restarted $pod
+
+	desc 'check data consistency for chaosed Pod'
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $pod.$cluster-pxc -uroot -proot_password" "-2nd"
+}
+
+network_loss() {
+	local pod=$1
+
+	# run chaos for Pod
+	yq eval '
+		.metadata.name = "chaos-pod-network-loss" |
+		del(.spec.selector.pods.test-namespace) |
+		.spec.selector.pods.'$namespace'[0] = "'$pod'"' $conf_dir/chaos-network-loss.yml \
+		| kubectl apply -f -
+	sleep 10
+
+	# write data
+	run_mysql \
+		'INSERT myApp.myApp (id) VALUES (100502)' \
+		"-h $cluster-pxc -uroot -proot_password"
+
+	# wait until the chaos stops
+	sleep 60
+
+	# check if all 3 Pods started
+	wait_for_running $cluster-pxc 3
+	wait_cluster_consistency "$cluster" 3 2
+
+	desc 'check data consistency for chaosed Pod'
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $pod.$cluster-pxc -uroot -proot_password" "-3rd"
+}
+
+recreate() {
+	run_mysql_local \
+		'
+            SET mysql-connect_timeout_server_max = 100500;
+            LOAD MYSQL VARIABLES TO RUNTIME;
+            SAVE MYSQL VARIABLES TO MEMORY;
+            SAVE MYSQL VARIABLES TO DISK;
+        ' \
+		"-h127.0.0.1 -P6032 -uproxyadmin -padmin_password" "$cluster-proxysql-0"
+
+	desc "delete cluster"
+	kubectl delete \
+		-f $conf_dir/$cluster.yml
+	wait_for_delete pod/$cluster-pxc-2
+	wait_for_delete pod/$cluster-pxc-1
+	wait_for_delete pod/$cluster-pxc-0
+
+	desc "recreate cluster"
+	apply_config "$conf_dir/$cluster.yml"
+
+	wait_for_running $cluster-pxc 3
+	wait_cluster_consistency "$cluster" 3 2
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $cluster-pxc-0.$cluster-pxc -uroot -proot_password" "-3rd"
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $cluster-pxc-1.$cluster-pxc -uroot -proot_password" "-3rd"
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $cluster-pxc-2.$cluster-pxc -uroot -proot_password" "-3rd"
+}
+
+main() {
+	create_infra $namespace
+	deploy_chaos_mesh $namespace
+
+	desc 'start cluster'
+	spinup_pxc "$cluster" "$conf_dir/$cluster.yml"
+
+	desc 'kill pod-0 pod'
+	kill_pod "$cluster-pxc-0"
+
+	desc 'fail pod-0 pod for 60s'
+	fail_pod "$cluster-pxc-0"
+
+	desc 'emulate bad network pod-0 for 60s'
+	network_loss "$cluster-pxc-0"
+
+	desc 'recreate cluster'
+	recreate
+
+	destroy_chaos_mesh
+	destroy $namespace
+	desc "test passed"
+}
+
+main

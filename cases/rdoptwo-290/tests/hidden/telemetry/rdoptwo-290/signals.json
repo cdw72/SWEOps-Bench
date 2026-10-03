@@ -1,0 +1,40 @@
+{
+ "case": "rdoptwo-290",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "nil_panic_290",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 1,
+    "fixed": 0
+   },
+   "note": "panic \u53ea\u7559 previous_logs(\u73b0\u5377\u7ffb\u9875\u540e 0),recheck \u5408\u8ba1\u73b0\u7b97"
+  },
+  {
+   "kind": "restart_count",
+   "target": "redis-operator/redis-operator/manager",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 3,
+    "fixed": 0
+   },
+   "note": "manager \u5d29\u6e83\u91cd\u542f"
+  },
+  {
+   "kind": "pod_status",
+   "target": "redis-operator",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/1/CrashLoopBackOff",
+    "fixed": "1/1/Running"
+   },
+   "note": "operator pod \u7ec8\u6001"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed",
+  "reference"
+ ]
+}

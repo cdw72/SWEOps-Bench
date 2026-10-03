@@ -1,0 +1,119 @@
+# cassop-696 sandbox-fidelity CR.
+#
+# The Acto capture (runs/cassop-696/trial-00-0000/mutated-000.yaml, identical
+# bytes to harbor-dataset/) was taken on a MULTI-node kind, so the operator's
+# default per-rack pod anti-affinity (kubernetes.io/hostname, built by
+# calculatePodAntiAffinity when allowMultipleNodesPerWorker is false) let every
+# rack land on its own node. This env is a single-node k3s, where that
+# anti-affinity admits exactly ONE cassandra pod on the whole cluster: rack3 won
+# the race, rack1 (whose PVC is pinned to the never-binding `gp2`
+# SC by block-rack1.yaml, i.e. the injected fault) and rack2 stayed Pending
+# forever. Consequences, both measured on the 16:31 oracle smoke (1632 s, REC=1):
+#   * rack3 alone cannot satisfy LOCAL_QUORUM for the DC's RF=3, so its
+#     management API readiness probe returned HTTP 500 and sts_ready stayed 0/1
+#     -- the GT's fixed side wants 1/1;
+#   * reconcile_racks.go returns RequeueSoon(2) from `startOneNodePerRack`
+#     BEFORE ever reaching updateHealth(), so the Healthy condition is written
+#     only once every rack's first node is up. With rack2 unschedulable that
+#     never happens -> "Healthy=True" was never observable either.
+# `allowMultipleNodesPerWorker: true` makes calculatePodAntiAffinity return nil
+# (construct_podtemplatespec.go:136) when no custom anti-affinity rules exist,
+# which is exactly the multi-node effect the corpus was recorded with. The
+# fault mechanism is untouched: rack1 still never starts (blocked PVC), and the
+# buggy operator still hangs on it -> the GT's buggy side "(无条件)" still holds.
+# Verified against the buggy source shipped in this same env (src-snapshot).
+#
+# SECOND env-side trap, measured on the 17:33 oracle smoke: with the anti-
+# affinity fixed, rack2 got its start request (node-state Ready-to-Start ->
+# Starting) but the Cassandra JVM died immediately and was recorded as
+# `reason=OOMKilled, exitCode=143`; the pod stayed 1/2-not-ready forever, which
+# left `findStartingNodes()` waiting on a Starting-but-never-ready pod and rack3
+# was never started at all. The gc.log of that attempt is the proof:
+#
+#   [info]  Minimum heap 8589934592  Initial heap 8589934592  Maximum heap 8589934592
+#
+# 8 GiB of heap against a 4 GiB container limit. The image's
+# /etc/cassandra/cassandra-env.sh calculate_heap_sizes() reads `free -m`, i.e.
+# the HOST's /proc/meminfo (65 GB here, nothing namespaces meminfo), then does
+# max(min(1/2 ram, 1024M), min(1/4 ram, 8192M)) -> the 8192M cap. The DataStax
+# management API starts Cassandra through /opt/cassandra/bin/cassandra (that is
+# why the heap came out of that very function), and cassandra-env.sh honours a
+# MAX_HEAP_SIZE/HEAP_NEWSIZE *environment pair* instead of calculating:
+#
+#   if   MAX_HEAP_SIZE unset && (HEAP_NEWSIZE unset || !G1)  -> calculate_heap_sizes
+#   elif MAX_HEAP_SIZE unset || (HEAP_NEWSIZE unset &&  G1)  -> echo "set or unset
+#                                                               in pairs"; exit 1
+#   ... then, only if jvm-server.options defines no -Xms/-Xmx:
+#        JVM_OPTS="$JVM_OPTS -Xms$MAX_HEAP_SIZE -Xmx$MAX_HEAP_SIZE"
+#
+# So BOTH variables have to be set (setting just one hard-exits the launcher).
+# They are injected through spec.podTemplateSpec: buildContainers() merges the
+# template's env into the cassandra container via combineEnvSlices(envDefaults,
+# cassContainer.Env) (construct_podtemplatespec.go:96), and the management API
+# merges (putAll, never replaces) that environment into the Cassandra process
+# (ShellUtils.executeShell). 2 GiB of heap fits the limit below with room for
+# metaspace/off-heap/page-cache, and two such nodes (~3.5 GiB RSS each) still
+# fit the 15 GiB sandbox; the server-side readiness probe is
+# `SELECT * from system.local` over the local socket, so the first node becomes
+# ready on its own and the operator then starts rack3 -> the GT's fixed side
+# (Healthy=True + rack3 sts 1/1) is reachable.
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: test-cluster
+spec:
+  clusterName: development
+  config:
+    cassandra-yaml:
+      authenticator: PasswordAuthenticator
+      authorizer: CassandraAuthorizer
+      num_tokens: 16
+      role_manager: CassandraRoleManager
+  managementApiAuth:
+    insecure: {}
+  racks:
+  - name: rack1
+  - name: rack2
+  - name: rack3
+  serverType: cassandra
+  serverVersion: 4.1.2
+  size: 3
+  allowMultipleNodesPerWorker: true
+  # Mandatory companion to the flag above: cassandradatacenter_webhook.go
+  # ("if using multiple nodes per worker, requests and limits should be set for
+  # both cpu and memory") rejects the CREATE outright without all four of these.
+  #
+  # The memory limit is NOT free-form, but not for the reason first assumed: the
+  # cassandra image does NOT read the cgroup limit (see the heap comment at the
+  # top) -- whatever this limit is, the JVM takes 8 GiB of heap unless
+  # MAX_HEAP_SIZE is set. The limit is therefore sized against the *injected*
+  # 2 GiB heap: ~2 GiB heap + ~0.4 GiB JVM overhead + page cache, i.e. 6 GiB is
+  # comfortable headroom, and two such nodes still fit the sandbox.
+  # CPU is raised because the two Cassandra JVMs boot sequentially while k3s,
+  # the operator and cert-manager keep running on the same host.
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 6Gi
+  # BOTH of these must be present (cassandra-env.sh exits 1 on a lone one); they
+  # replace the host-meminfo heap calculation that OOMKilled rack2 at 17:33.
+  podTemplateSpec:
+    spec:
+      containers:
+      - name: cassandra
+        env:
+        - name: MAX_HEAP_SIZE
+          value: 2G
+        - name: HEAP_NEWSIZE
+          value: 512M
+  storageConfig:
+    cassandraDataVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+      storageClassName: standard

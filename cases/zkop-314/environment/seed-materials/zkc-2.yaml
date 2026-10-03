@@ -1,0 +1,50 @@
+# zkop-314 workload CR (the N3 env's gen0 state).
+#
+# Three things about this file are deliberate:
+#
+#   * replicas: 1. The scene needs a FROZEN read of a CR whose replica count is
+#     SMALLER than the live StatefulSet's, because that is the only stale read
+#     that makes the buggy operator write anything: the pin (cda03d2f, Mar 2021)
+#     reconciles the sts straight from whatever the CR it holds says, so a
+#     stale "1" against a live sts of 2 is a wrongful scale-down. The trigger
+#     freezes this one-replica CR and only then scales the cluster up for real
+#     (patch replicas -> 2), which is exactly the "after the cluster has already
+#     been scaled up" wording of PR #359.
+#   * image pinned to what is in `images/`. The operator's own default is
+#     `pravega/zookeeper:0.2.8` + pullPolicy `Always` (zookeepercluster_types
+#     withDefaults), which in a network-less env is an ImagePullBackOff that
+#     floods the events feed with a Warning that has nothing to do with the bug.
+#     (The recorded sieve runs show the two sides defaulting to different tags
+#     -- 0.2.8 vs 0.2.11 -- because the operator versions differ; pinning removes
+#     that difference from the comparison.)
+#   * reclaimPolicy: Delete is NOT optional: reconcileFinalizers returns early
+#     (no finalizer, no cleanup) unless Persistence is set AND its
+#     VolumeReclaimPolicy is Delete.
+#
+# The podAntiAffinity term is here because the sieve CR had it, and n3ify_b's
+# `cr_rewrites` downgrades required->preferred on the way into seed-materials:
+# a single-node k3s can never satisfy a REQUIRED hostname anti-affinity for two
+# replicas, so gen1 would sit at 1/2 on BOTH sides and the discriminator
+# (2/2 vs 1/1) would collapse. The rewrite only touches the copy.
+apiVersion: zookeeper.pravega.io/v1beta1
+kind: ZookeeperCluster
+metadata:
+  name: zookeeper-cluster
+spec:
+  replicas: 1
+  image:
+    repository: pravega/zookeeper
+    tag: "0.2.14"
+    pullPolicy: IfNotPresent
+  persistence:
+    reclaimPolicy: Delete
+  pod:
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: zookeeper-cluster
+            topologyKey: kubernetes.io/hostname

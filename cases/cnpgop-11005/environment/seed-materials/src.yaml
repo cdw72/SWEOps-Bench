@@ -1,0 +1,14 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: src
+  namespace: default
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+  postgresql:
+    pg_hba:
+    - host replication all 0.0.0.0/0 trust
+    - host all all 0.0.0.0/0 trust
+  storage:
+    size: 1Gi

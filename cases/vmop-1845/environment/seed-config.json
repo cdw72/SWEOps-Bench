@@ -1,0 +1,55 @@
+{
+  "case_id": "vmop-1845",
+  "operator_ready_timeout": 900,
+  "ensure_ns": [
+    "vm"
+  ],
+  "k8s_version": "v1.31",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n vm get deploy operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get pvc",
+          "vmstorage-db-vmstorage-vmcluster-0"
+        ],
+        [
+          "get pods",
+          "Running"
+        ]
+      ],
+      "timeout": 420
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "default",
+      "settle": 120,
+      "timeout": 420
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [
+    [
+      "-n default get events --sort-by=.lastTimestamp",
+      "Only one reference can have Controller"
+    ]
+  ],
+  "image_rewrites": [],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 120
+}

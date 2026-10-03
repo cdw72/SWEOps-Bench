@@ -1,0 +1,29 @@
+{
+ "case": "rdoptwo-480",
+ "confirmed": [
+  {
+   "kind": "sts_ready",
+   "target": "test-cluster-leader",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "2/3",
+    "fixed": "3/3"
+   },
+   "note": "buggy leader 2/3(leader-2 \u6c38 Pending,#411 \u7f3a\u5e2d);fixed #411 \u91cd\u5efa\u6536\u655b 3/3"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "FAIL message received from",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 4,
+    "fixed": 0
+   },
+   "note": "issue \u8bed\u4e49\u5ba1\u8ba1(2026-09-10)\u8865:sentinel \u5224 master FAIL(pod \u5361\u65e7\u7248\u672c\u2192\u96c6\u7fa4\u964d\u7ea7)buggy 4(follower-0/1+leader-0/1 \u5404 1)/fixed 0;\u540c\u578b redis \u65e5\u5fd7\u65e0\u5c01\u9876\u3002\u533a\u522b\u4e8e 1692 \u7684 norm_clog \u65f6\u95f4\u6233\u4f2a\u5f71:\u672c\u951a raw \u5b57\u9762\u53cc\u4fa7\u590d\u6570"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

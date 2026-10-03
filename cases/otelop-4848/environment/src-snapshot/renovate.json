@@ -1,0 +1,132 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "labels": ["dependencies"],
+  "enabledManagers": ["regex", "npm", "pip_requirements"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description" : "Update Go versions used for building in the CI",
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "go",
+      "fileMatch": [
+        "(^|/)\\.github/workflows/.+\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "go-version: [\"']~(?<currentValue>.+)[\"']"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description" : "Update tool versions in the Makefile and Github Actions",
+      "fileMatch": [
+        "(^|/)Makefile$",
+        "(^|/)\\.github/workflows/.+\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?\\s+[A-Za-z0-9_]+?_VERSION\\s*:*\\??=\\s*[\"']?(?<currentValue>.+?)[\"']?\\s"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description" : "Update Chainsaw version in OpenShift CI tests runner Dockerfile",
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kyverno/chainsaw",
+      "fileMatch": [
+        "(^|/)tests/e2e-openshift/Dockerfile$"
+      ],
+      "matchStrings": [
+        "ENV CHAINSAW_VERSION=(?<currentValue>v[\\d\\.]+)"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update OpenTelemetry Java instrumentation version",
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "open-telemetry/opentelemetry-java-instrumentation",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "fileMatch": [
+        "(^|/)autoinstrumentation/java/version\\.txt$"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\s*$"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update OpenTelemetry .NET instrumentation version",
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "open-telemetry/opentelemetry-dotnet-instrumentation",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "fileMatch": [
+        "(^|/)autoinstrumentation/dotnet/version\\.txt$"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\s*$"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update kind node images in kind config files",
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "kindest/node",
+      "versioningTemplate": "regex:^v?(?<compatibility>\\d+\\.\\d+)\\.(?<major>\\d+)$",
+      "fileMatch": [
+        "(^|/)kind-[\\d\\.]+\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "image: kindest/node:(?<currentValue>v[\\d\\.]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": ["golang-version"],
+      "matchManagers": ["regex"],
+      "matchFileNames": [".github/workflows/*.yaml", ".github/workflows/*.yml"],
+      "commitMessageTopic": "go version in CI"
+    },
+    {
+      "matchManagers": ["regex"],
+      "matchFileNames": ["Makefile"],
+      "commitMessageTopic": "tool {{depName}}"
+    },
+    {
+      "matchManagers": ["regex"],
+      "matchFileNames": ["tests/e2e-openshift/Dockerfile"],
+      "commitMessageTopic": "Update Chainsaw version in OpenShift CI Dockerfile"
+    },
+    {
+      "matchManagers": ["regex"],
+      "matchFileNames": ["autoinstrumentation/java/version.txt"],
+      "commitMessageTopic": "OpenTelemetry java agent version"
+    },
+    {
+      "matchManagers": ["regex"],
+      "matchFileNames": ["autoinstrumentation/dotnet/version.txt"],
+      "commitMessageTopic": "OpenTelemetry dotnet agent version"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["autoinstrumentation/nodejs/package.json"],
+      "matchPackageNames": ["@opentelemetry/auto-instrumentations-node"],
+      "commitMessageTopic": "OpenTelemetry nodejs agent version"
+    },
+    {
+      "matchManagers": ["pip_requirements"],
+      "matchFileNames": ["autoinstrumentation/python/requirements.txt"],
+      "matchPackagePatterns": ["^opentelemetry-"],
+      "groupName": "OpenTelemetry Python packages",
+      "group": {
+        "commitMessageTopic": "OpenTelemetry python agent version to {{ upgrades.0.newVersion }}"
+      },
+      "ignoreUnstable": false
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["kindest/node"],
+      "groupName": "kind node images",
+      "schedule": ["on monday"],
+      "commitMessageTopic": "kind node images"
+    }
+  ]
+}

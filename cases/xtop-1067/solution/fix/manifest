@@ -1,0 +1,9 @@
+pkg/apis/pxc/v1/pxc_types.go
+pkg/controller/pxc/controller.go
+pkg/controller/pxc/upgrade.go
+pkg/controller/pxc/users.go
+pkg/controller/pxc/users_without_dp.go
+pkg/pxc/app/statefulset/haproxy.go
+pkg/pxc/app/statefulset/node.go
+pkg/pxc/app/statefulset/proxysql.go
+pkg/pxc/statefulset.go

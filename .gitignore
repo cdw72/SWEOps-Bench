@@ -1,0 +1,10 @@
+# run/session artifacts — never commit
+runs/
+artifacts/
+results/
+__pycache__/
+*.pyc
+# baked operator images are rebuilt, not stored
+cases/*/environment/images/*.tar
+# local toolchains
+*.tar.gz

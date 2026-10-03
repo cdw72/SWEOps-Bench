@@ -1,0 +1,3 @@
+internal/controller/operator/factory/reconcile/statefulset.go
+internal/controller/operator/factory/reconcile/statefulset_pvc_expand.go
+internal/controller/operator/factory/reconcile/statefulset_pvc_expand_test.go

@@ -1,0 +1,7 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  generation: 1
+  name: some-name-tls-issue-pxc-ca-issuer
+spec:
+  selfSigned: {}

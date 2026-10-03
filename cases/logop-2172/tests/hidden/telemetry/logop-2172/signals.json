@@ -1,0 +1,29 @@
+{
+ "case": "logop-2172",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "prule_nil_panic",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 8,
+    "fixed": 0
+   },
+   "note": "prometheusrules.go:33 panic \u6808\u5e27;\u4e32\u8ba1\u6570\u5f52\u96f6=\u4fee\u597d"
+  },
+  {
+   "kind": "operator_log",
+   "target": "panic_lines",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 8,
+    "fixed": 0
+   },
+   "note": "panic \u884c\u6570 buggy=8/fixed=0(\u4e0e\u6808\u7b7e\u540d\u540c\u6e90,\u53cc\u4fdd\u9669)"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

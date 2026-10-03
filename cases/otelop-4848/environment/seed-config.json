@@ -1,0 +1,58 @@
+{
+  "case_id": "otelop-4848",
+  "k8s_version": "v1.31",
+  "operator_bundle": "bundle-otelop-146.yaml",
+  "operator_ready": [
+    "-n opentelemetry-operator-system get deploy opentelemetry-operator-controller-manager",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "inst.yaml",
+      "ns": "app",
+      "settle": 15
+    },
+    {
+      "file": "app.yaml",
+      "ns": "app",
+      "settle": 180
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n app get events --field-selector reason=FailedCreate -o jsonpath={.items[*].message}",
+      "violates PodSecurity"
+    ],
+    [
+      "-n app get events -o jsonpath={.items[*].message}",
+      "opentelemetry-auto-instrumentation-python"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "opentelemetry-operator-system"
+  ],
+  "pre_manifests": [
+    "ns-app.yaml",
+    "cert-manager-v1.14.7.yaml"
+  ],
+  "pre_ready": [
+    [
+      "get deploy -n cert-manager cert-manager-webhook",
+      "1/1"
+    ]
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "app",
+      "apply",
+      "-f",
+      "/seed-data/app.yaml"
+    ]
+  ],
+  "poll_fault_settle": 180
+}

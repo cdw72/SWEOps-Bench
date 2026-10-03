@@ -1,0 +1,68 @@
+# 健康态 CR = mutated-000.yaml 去掉 **TLS 整块**后的形态(`poll_pre_sequence` 用它当健康前缀)。
+#
+# ★ 为什么必须去掉 TLS,而不是保留(2026-09-22 活体取证):
+#   本案的故障本体就是 TLS 路上的一刀 —— buggy 算子 `getRedisTLSArgs` 拼的是
+#   `--tls --cacert --insecure`(**不给客户端证书**),而 pre_manifests 里的
+#   ConfigMap `redis-tls-config` 带 `tls-auth-clients yes` ⇒ redis 服务端拒绝,
+#   容器日志里刷 "peer did not return a certificate"(GT clog_sig buggy=39/fixed=0),
+#   同时 CR status.state 卡在 Bootstrap(fixed 侧是 Ready)。
+#   ⇒ 只要 CR 带 TLS,**两个判分信号在 t=0 就已经是 buggy 值**:
+#     实测 20260921 那场的 **pre-capture(注入前)** 就已经抓到 3 条证书拒绝,
+#     agent 在 k=0 与 k=1 引用的是**同一批句子**,却一个记假警报、一个记正确检出。
+#   ⇒ 健康前缀必须**不含 TLS**:redis 明文跑,buggy 算子的 redis-cli 也连得上,
+#     CR 到 Ready;注入(poll_fault 重放 mutated-001.yaml)才把 TLS 那一刀插进来。
+#
+# 去掉的东西(逐项都只与 TLS 有关,故障语义零变化):
+#   - spec.TLS(ca/cert/key/secretName)
+#   - spec.env REDIS_TLS_CA_KEY=/tls/ca.crt(`/tls` 只在 TLS 挂载时才存在)
+#   - redisLeader/redisFollower.redisConfig.additionalRedisConfig: redis-tls-config
+#     (那份 ConfigMap 的 `tls-auth-clients yes` 就是拒绝的来源)
+# 其余字段(clusterSize/clusterVersion/kubernetesConfig/四个探针)与 mutated-000 逐字一致。
+#
+# ★ 落点:本文件在 overlay 的 files/ 里(**durable**,gen 重建 hub 时会自动拷回),
+#   并且必须在 hub/rdoptwo-1863/task/environment/seed-materials/ 里有一份(**operative**,
+#   本轮 env 就是从那儿建起来的)。缺任何一份,健康期都不存在 ——
+#   同 [[k8spsmdb-1154]] 那次"只改 hub、真源没有 ⇒ 下次 gen 静默抹掉"的教训。
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisCluster
+metadata:
+  name: test-cluster
+spec:
+  clusterSize: 3
+  clusterVersion: v7
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.0.15
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 101m
+        memory: 512Mi
+      requests:
+        cpu: 101m
+        memory: 512Mi
+  redisFollower:
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+  redisLeader:
+    livenessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 5

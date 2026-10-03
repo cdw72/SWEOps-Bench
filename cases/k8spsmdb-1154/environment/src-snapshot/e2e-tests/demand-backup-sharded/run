@@ -1,0 +1,183 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+test_dir=$(realpath "$(dirname "$0")")
+. "${test_dir}/../functions"
+set_debug
+
+check_data() {
+	local postfix=$1
+
+	for i in $(seq 0 2); do
+		compare_mongos_cmd "find" "myApp:myPass@$cluster-mongos.$namespace" "${postfix}${i/0/}" ".svc.cluster.local" "myApp${i/0/}" "test"
+	done
+}
+
+create_infra "$namespace"
+
+deploy_minio
+
+desc 'create first PSMDB cluster'
+cluster="some-name"
+kubectl_bin apply \
+	-f "$conf_dir/secrets.yml" \
+	-f "$conf_dir/client.yml"
+
+apply_s3_storage_secrets
+if version_gt "1.19" && [ $EKS -ne 1 ]; then
+	cat "$conf_dir/container-rc.yaml" | $sed 's/docker/runc/g' | kubectl_bin apply -f -
+elif version_gt "1.24" && [ $EKS -eq 1 ]; then
+	cat "$conf_dir/container-rc.yaml" | $sed 's/docker/runc/g' | kubectl_bin apply -f -
+else
+	kubectl_bin apply -f "$conf_dir/container-rc.yaml"
+fi
+
+apply_cluster "$test_dir/conf/$cluster-rs0.yml"
+desc 'check if all 3 Pods started'
+wait_for_running $cluster-rs0 3
+wait_for_running $cluster-cfg 3 "false"
+wait_for_running $cluster-mongos 3
+
+sleep 10
+
+desc 'check if service and statefulset created with expected config'
+compare_kubectl statefulset/$cluster-rs0
+compare_kubectl statefulset/$cluster-rs1
+compare_kubectl statefulset/$cluster-rs2
+compare_kubectl statefulset/$cluster-cfg
+compare_kubectl statefulset/$cluster-mongos ""
+
+kubectl_bin apply -f "$test_dir/conf/mongos-secret.yml"
+sleep 10
+wait_for_running $cluster-mongos 3
+
+compare_kubectl statefulset/$cluster-mongos "-secret"
+
+desc 'write data, read from all'
+run_mongos \
+	'db.createUser({user:"myApp",pwd:"myPass",roles:[{db:"myApp",role:"readWrite"},{db:"myApp1",role:"readWrite"},{db:"myApp2",role:"readWrite"}]})' \
+	"userAdmin:userAdmin123456@$cluster-mongos.$namespace"
+run_mongos \
+	'sh.enableSharding("myApp","rs0")' \
+	"clusterAdmin:clusterAdmin123456@$cluster-mongos.$namespace"
+run_mongos \
+	'sh.enableSharding("myApp1","rs1")' \
+	"clusterAdmin:clusterAdmin123456@$cluster-mongos.$namespace"
+run_mongos \
+	'sh.enableSharding("myApp2","rs2")' \
+	"clusterAdmin:clusterAdmin123456@$cluster-mongos.$namespace"
+insert_data_mongos "100500" "myApp"
+insert_data_mongos "100500" "myApp1"
+insert_data_mongos "100500" "myApp2"
+minikube_sleep
+compare_mongos_cmd "find" "myApp:myPass@$cluster-mongos.$namespace"
+
+wait_backup_agent $cluster-rs0-0
+wait_backup_agent $cluster-rs0-1
+wait_backup_agent $cluster-rs0-2
+wait_backup_agent $cluster-rs1-0
+wait_backup_agent $cluster-rs1-1
+wait_backup_agent $cluster-rs1-2
+wait_backup_agent $cluster-rs2-0
+wait_backup_agent $cluster-rs2-1
+wait_backup_agent $cluster-rs2-2
+backup_name_aws="backup-aws-s3"
+backup_name_minio="backup-minio"
+backup_name_gcp="backup-gcp-cs"
+backup_name_azure="backup-azure-blob"
+
+desc 'run backups'
+run_backup minio
+if [ -z "$SKIP_BACKUPS_TO_AWS_GCP_AZURE" ]; then
+	run_backup aws-s3
+	run_backup gcp-cs
+	run_backup azure-blob
+
+	wait_backup "$backup_name_aws"
+	wait_backup "$backup_name_gcp"
+	wait_backup "$backup_name_azure"
+fi
+wait_backup "$backup_name_minio"
+
+sleep 5
+
+if [ -z "$SKIP_BACKUPS_TO_AWS_GCP_AZURE" ]; then
+	desc 'check backup and restore -- aws-s3'
+	backup_dest_aws=$(get_backup_dest "$backup_name_aws")
+	curl -s "https://s3.amazonaws.com/${backup_dest_aws}/rs0/myApp.test.gz" | gunzip >/dev/null
+	curl -s "https://s3.amazonaws.com/${backup_dest_aws}/rs1/myApp1.test.gz" | gunzip >/dev/null
+	curl -s "https://s3.amazonaws.com/${backup_dest_aws}/rs2/myApp2.test.gz" | gunzip >/dev/null
+	insert_data_mongos "100501" "myApp"
+	insert_data_mongos "100501" "myApp1"
+	insert_data_mongos "100501" "myApp2"
+	check_data "-2nd"
+	run_restore "$backup_name_aws"
+	wait_restore "$backup_name_aws" "$cluster"
+	check_data
+
+	desc 'check backup and restore -- gcp-cs'
+	backup_dest_gcp=$(get_backup_dest "$backup_name_gcp")
+	curl -s "https://storage.googleapis.com/${backup_dest_gcp}/rs0/myApp.test.gz" | gunzip >/dev/null
+	curl -s "https://storage.googleapis.com/${backup_dest_gcp}/rs1/myApp1.test.gz" | gunzip >/dev/null
+	curl -s "https://storage.googleapis.com/${backup_dest_gcp}/rs2/myApp2.test.gz" | gunzip >/dev/null
+	insert_data_mongos "100501" "myApp"
+	insert_data_mongos "100501" "myApp1"
+	insert_data_mongos "100501" "myApp2"
+	check_data "-2nd"
+	run_restore "$backup_name_gcp"
+	wait_restore "$backup_name_gcp" "$cluster"
+	check_data
+
+	desc 'check backup and restore -- azure-blob'
+	backup_dest_azure=$(get_backup_dest "$backup_name_azure")
+	curl -s "https://engk8soperators.blob.core.windows.net/${backup_dest_azure}/rs0/myApp.test.gz" | gunzip >/dev/null
+	curl -s "https://engk8soperators.blob.core.windows.net/${backup_dest_azure}/rs1/myApp1.test.gz" | gunzip >/dev/null
+	curl -s "https://engk8soperators.blob.core.windows.net/${backup_dest_azure}/rs2/myApp2.test.gz" | gunzip >/dev/null
+	insert_data_mongos "100501" "myApp"
+	insert_data_mongos "100501" "myApp1"
+	insert_data_mongos "100501" "myApp2"
+	check_data "-2nd"
+	run_restore "$backup_name_azure"
+	wait_restore "$backup_name_azure" "$cluster"
+	check_data
+fi
+
+desc 'check backup and restore -- minio'
+backup_dest_minio=$(get_backup_dest "$backup_name_minio")
+kubectl_bin run -i --rm aws-cli --image=perconalab/awscli --restart=Never -- \
+	/usr/bin/env AWS_ACCESS_KEY_ID=some-access-key AWS_SECRET_ACCESS_KEY=some-secret-key AWS_DEFAULT_REGION=us-east-1 \
+	/usr/bin/aws --endpoint-url http://minio-service:9000 s3 ls "s3://${backup_dest_minio}/rs0/" \
+	| grep "myApp.test.gz"
+insert_data_mongos "100501" "myApp"
+insert_data_mongos "100501" "myApp1"
+insert_data_mongos "100501" "myApp2"
+check_data "-2nd"
+run_restore "$backup_name_minio"
+wait_restore "$backup_name_minio" "$cluster"
+check_data
+
+desc 'delete backup and check if it is removed from bucket -- minio'
+kubectl_bin delete psmdb-backup --all
+
+backup_exists=$(kubectl_bin run -i --rm aws-cli --image=perconalab/awscli --restart=Never -- \
+	/usr/bin/env AWS_ACCESS_KEY_ID=some-access-key AWS_SECRET_ACCESS_KEY=some-secret-key AWS_DEFAULT_REGION=us-east-1 \
+	/usr/bin/aws --endpoint-url http://minio-service:9000 s3 ls s3://operator-testing/ \
+	| grep -c ${backup_dest_minio}_ | cat)
+if [[ $backup_exists -eq 1 ]]; then
+	echo "Backup was not removed from bucket -- minio"
+	exit 1
+fi
+
+if [ -z "$SKIP_BACKUPS_TO_AWS_GCP_AZURE" ]; then
+	check_backup_deletion "https://s3.amazonaws.com/${backup_dest_aws}" "aws-s3"
+	check_backup_deletion "https://storage.googleapis.com/${backup_dest_gcp}" "gcp-cs"
+	check_backup_deletion "https://engk8soperators.blob.core.windows.net/${backup_dest_azure}" "azure-blob"
+fi
+
+desc 'check for passwords leak'
+check_passwords_leak
+
+kubectl_bin delete -f "$conf_dir/container-rc.yaml"
+destroy "$namespace"

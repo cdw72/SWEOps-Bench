@@ -1,0 +1,54 @@
+{
+  "case_id": "vmop-2132",
+  "operator_ready_timeout": 900,
+  "ensure_ns": [
+    "vm"
+  ],
+  "k8s_version": "v1.28",
+  "pre_manifests": [
+    "prometheus-crds-stub.yaml"
+  ],
+  "pre_ready": [
+    [
+      "wait --for=condition=Established --timeout=20s crd servicemonitors.monitoring.coreos.com podmonitors.monitoring.coreos.com probes.monitoring.coreos.com prometheusrules.monitoring.coreos.com scrapeconfigs.monitoring.coreos.com alertmanagerconfigs.monitoring.coreos.com",
+      null
+    ]
+  ],
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n vm get deploy operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "default",
+      "settle": 90
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [
+    [
+      "get events -n default",
+      "missing chat_id"
+    ]
+  ],
+  "image_rewrites": [],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 60
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/mutated-000.yaml"
+    ]
+  ],
+  "poll_fault_settle": 90
+}

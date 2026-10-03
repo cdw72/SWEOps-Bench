@@ -1,0 +1,40 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "zookeeper-operator",
+    "get",
+    "deploy",
+    "acto-test-operator-zookeeper-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "CGO_ENABLED=0",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/zookeeper-operator",
+   "-ldflags",
+   "-X github.com/pravega/zookeeper-operator/pkg/version.Version=0.2.13 -X github.com/pravega/zookeeper-operator/pkg/version.GitSHA=6ba5f63",
+   "./cmd/manager"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/zookeeper-operator",
+    "/usr/local/bin/zookeeper-operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "zookeeper-operator/acto-test-operator-zookeeper-operator"
+ },
+ "settle": 120,
+ "slug": "zkop-474"
+}

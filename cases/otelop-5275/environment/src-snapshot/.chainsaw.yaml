@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/configuration-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: configuration
+spec:
+  parallel: 4
+  timeouts:
+    assert: 6m0s
+    cleanup: 5m0s
+    delete: 5m0s
+    error: 5m0s
+    apply: 15s
+    exec: 15s
+  reportFormat: JUNIT-TEST
+  reportPath: ./.testresults/e2e
+  # Diagnostics collected automatically on ANY test failure, giving every test a
+  # consistent baseline without per-test boilerplate. Per-test `catch` blocks still
+  # run in addition to these and may add test-specific collectors.
+  catch:
+    # Namespace events first: these surface scheduling, image-pull and volume-mount
+    # failures that pod logs cannot show (e.g. a pod stuck in ContainerCreating).
+    - events: {}
+    # Describe every pod in the test namespace, with its events, so a pod that never
+    # started - and therefore has no logs - still yields a diagnosable reason.
+    - describe:
+        apiVersion: v1
+        kind: Pod
+        showEvents: true
+    # Operator logs: most e2e behaviour flows through the operator, and an
+    # injection/sidecar miss is only explained by what the operator logged.
+    - podLogs:
+        namespace: opentelemetry-operator-system
+        selector: app.kubernetes.io/name=opentelemetry-operator

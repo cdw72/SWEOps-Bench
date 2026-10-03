@@ -1,0 +1,353 @@
+name: release
+
+on:
+  push:
+    tags:
+      - v5.*
+
+permissions: {}
+
+env:
+  CR_INDEX_PATH: "${{ github.workspace }}/.cr-index"
+  CR_TOOL_PATH: "${{ github.workspace }}/.cr-tool"
+  RELEASE_NAME: ${{ github.ref_name }}
+
+jobs:
+  helm:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Install Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        with:
+          version: v3.17.3
+
+      - name: Prepare
+        shell: bash
+        run: |
+          # OCI standard enforces lower-case paths
+          HELM_REPO=$(echo "oci://ghcr.io/${{ github.repository_owner }}/helm-charts" | tr '[:upper:]' '[:lower:]')
+          echo "HELM_REPO=$HELM_REPO" >> $GITHUB_ENV
+          echo "HELM_RELEASE_VERSION=${RELEASE_NAME:1}" >> $GITHUB_ENV
+
+      - name: Publish Helm charts
+        env:
+          RELEASE_ACTOR: ${{ github.actor }}
+        run: |
+          cd source/deploy/helm
+          helm registry login -u "${RELEASE_ACTOR}" -p ${{ secrets.GITHUB_TOKEN }} ghcr.io
+          helm package --app-version ${RELEASE_NAME} --version ${HELM_RELEASE_VERSION} grafana-operator
+
+          helm push "grafana-operator-${HELM_RELEASE_VERSION}.tgz" ${{ env.HELM_REPO }}
+
+      - name: Install CR tool
+        run: |
+          mkdir "${CR_TOOL_PATH}"
+          mkdir "${CR_INDEX_PATH}"
+          curl -sSLo cr.tar.gz -H 'Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' "https://github.com/helm/chart-releaser/releases/download/v1.4.0/chart-releaser_1.4.0_linux_amd64.tar.gz"
+          tar -xzf cr.tar.gz -C "${CR_TOOL_PATH}"
+          rm -f cr.tar.gz
+
+      - name: Get secrets
+        id: secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@a37de51f3d713a30a9e4b21bcdfbd38170020593 # get-vault-secrets/v1.3.0
+        with:
+          repo_secrets: |
+            APP_ID=helm-release-github-app:app-id
+            APP_PRIVATE_KEY=helm-release-github-app:private-key
+          export_env: false
+
+      - name: Create a GitHub App installation access token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        id: app-token
+        with:
+          app-id: ${{ fromJSON(steps.secrets.outputs.secrets || '{}').APP_ID }}
+          private-key: ${{ fromJSON(steps.secrets.outputs.secrets || '{}').APP_PRIVATE_KEY }}
+          repositories: helm-charts
+          owner: "${{ github.event.repository.owner.login }}"
+
+      - name: Set the correct token (Github App or PAT) # zizmor: ignore[template-injection] app token considered safe
+        run: |
+          echo "AUTHTOKEN=${{ steps.app-token.outputs.token }}" >> $GITHUB_ENV
+
+      - name: Make github release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          body: |
+            Helm chart for the [grafana-operator](https://github.com/${{ github.repository }})
+
+            Tag on source: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          files: |
+            source/deploy/helm/grafana-operator-${{ env.HELM_RELEASE_VERSION }}.tgz
+          repository: grafana/helm-charts
+          tag_name: grafana-operator-${{ env.HELM_RELEASE_VERSION }}
+          token: ${{ env.AUTHTOKEN }}
+
+      - name: Checkout helm-charts # zizmor: ignore[artipacked] required to push using chart releaser in last step
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+          repository: grafana/helm-charts
+          path: helm-charts
+          token: ${{ env.AUTHTOKEN }}
+
+      - name: Configure Git for helm-charts
+        run: |
+          cd helm-charts
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Update helm repo index.yaml
+        run: |
+          cd helm-charts
+          "${CR_TOOL_PATH}/cr" index --config ../source/deploy/helm/cr.yaml --token "${{ env.AUTHTOKEN }}" --index-path "${CR_INDEX_PATH}" --package-path ../source/deploy/helm/ --push
+
+  kustomize:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: install flux
+        uses: fluxcd/flux2/action@8454b02a32e48d775b9f563cb51fdcb1787b5b93 # v2.7.5
+
+      - name: Clone repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare
+        run: |
+          # OCI standard enforces lower-case paths
+          KUSTOMIZE_REPO=$(echo "oci://ghcr.io/${{ github.repository_owner }}/kustomize/grafana-operator" | tr '[:upper:]' '[:lower:]')
+          GHCR_REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "KUSTOMIZE_REPO=$KUSTOMIZE_REPO" >> $GITHUB_ENV
+          echo "GHCR_REPO=$GHCR_REPO" >> $GITHUB_ENV
+
+      - name: update-kustomize-image
+        run: |
+          make kustomize-set-image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Kustomize OCI artifact to GHCR
+        env:
+          PUBLISH_SOURCE: ${{ github.event.repository.html_url }}
+        run: |
+          flux push artifact ${{ env.KUSTOMIZE_REPO }}:${RELEASE_NAME} \
+            --path="./deploy/kustomize" \
+            --source="${PUBLISH_SOURCE}" \
+            --revision="${RELEASE_NAME}/${GITHUB_SHA}"
+
+      - name: upload kustomize assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          make kustomize-github-assets
+          gh release upload "${RELEASE_NAME}" kustomize-*.yaml crds.yaml
+
+  image:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    outputs:
+      platform-map: ${{ steps.publish-image.outputs.PLATFORM_MAP }}
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          persist-credentials: false
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - uses: ko-build/setup-ko@d006021bd0c28d1ce33a07e7943d48b079944c8d # v0.9
+        with:
+          version: v0.18.0
+
+      - name: Build and push
+        id: publish-image
+        env:
+          IMAGE_VERSION: ${{ github.ref_name }}
+          KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
+        run: |
+          # Create SBOM directory
+          mkdir -p ./sboms
+
+          # Build multi-platform with SBOMs
+          ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest --bare --platform linux/arm64,linux/amd64 -t ${IMAGE_VERSION} \
+            --image-label org.opencontainers.image.title=grafana-operator \
+            --image-label org.opencontainers.image.description="An operator for Grafana that installs and manages Grafana instances & Dashboards & Datasources through Kubernetes/OpenShift CRs" \
+            --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
+            --image-label org.opencontainers.image.revision=${{ github.sha }} \
+            --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
+            --image-label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          # Extract manifest digest
+          MANIFEST_DIGEST=$(cat ./image-digest | cut -d@ -f2)
+
+          # Build platform map by processing SBOM files
+          PLATFORM_MAP=$(
+            find ./sboms -name "*.spdx.json" -not -name "*index*" | while read file; do
+              platform=$(basename "$file" .spdx.json | sed 's/^main\.go-//' | sed 's/-/\//g')
+              digest=$(jq -r '.packages[] | select(.primaryPackagePurpose == "CONTAINER") | .name | sub("sha256:"; "")' "$file")
+              echo "{\"platform\":\"$platform\",\"digest\":\"$digest\",\"sbom\":\"$file\"}"
+            done | jq -s .
+          )
+
+          # Output using heredoc
+          {
+            echo 'MANIFEST_DIGEST<<EOF'
+            echo "$MANIFEST_DIGEST"
+            echo 'EOF'
+            echo 'PLATFORM_MAP<<EOF'
+            echo "$PLATFORM_MAP"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          # Display summary
+          echo "Build Summary:"
+          echo "  Manifest: $MANIFEST_DIGEST"
+          echo "$PLATFORM_MAP" | jq -r '.[] | "  \(.platform): sha256:\(.digest)"'
+
+          # TODO: Add SBOM enrichment here in the future
+          # You can modify the SBOM files before attestation
+          # For example: add custom metadata, vulnerability scan results, etc.
+
+      - name: Upload SBOMs as artifacts
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: sboms
+          path: ./sboms/
+          retention-days: 1
+
+  attest:
+    needs: image
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/arm64, linux/amd64]
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download SBOMs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: sboms
+          path: ./sboms/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        with:
+          cosign-release: "v2.2.2"
+
+      - name: Extract platform info
+        id: platform-info
+        env:
+          PLATFORM_MAP: ${{ needs.image.outputs.platform-map }}
+          CURRENT_PLATFORM: ${{ matrix.platform }}
+        run: |
+          PLATFORM_INFO=$(echo "$PLATFORM_MAP" | jq -r ".[] | select(.platform == \"v5/$CURRENT_PLATFORM\")")
+          DIGEST=$(echo "$PLATFORM_INFO" | jq -r '.digest')
+          SBOM=$(echo "$PLATFORM_INFO" | jq -r '.sbom')
+
+          # Add sha256: prefix for cosign
+          DIGEST_WITH_PREFIX="sha256:$DIGEST"
+
+          echo "DIGEST=$DIGEST_WITH_PREFIX" >> $GITHUB_OUTPUT
+          echo "SBOM=$SBOM" >> $GITHUB_OUTPUT
+
+          echo "Platform: $CURRENT_PLATFORM"
+          echo "Digest: $DIGEST_WITH_PREFIX"
+          echo "SBOM: $SBOM"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: "ghcr.io/${{ github.repository }}"
+          subject-digest: ${{ steps.platform-info.outputs.DIGEST }}
+          push-to-registry: true
+
+      - name: Sign and attach SBOM
+        env:
+          REPO_URI: "ghcr.io/${{ github.repository }}"
+        run: |
+          echo "Attesting SBOM for ${{ matrix.platform }}..."
+          echo "  Image: ${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+          echo "  SBOM:  ${{ steps.platform-info.outputs.SBOM }}"
+
+          cosign attest --yes --predicate "${{ steps.platform-info.outputs.SBOM }}" --type spdxjson \
+            "${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+
+          echo "Successfully attested SBOM for ${{ matrix.platform }}"
+          echo "To verify: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+
+  distribute-to-quay:
+    runs-on: ubuntu-latest
+    needs:
+      - attest
+    permissions:
+      packages: read
+      id-token: write
+    steps:
+      - name: Get secrets
+        id: secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@a37de51f3d713a30a9e4b21bcdfbd38170020593 # get-vault-secrets/v1.3.0
+        with:
+          repo_secrets: |
+            QUAY_USERNAME=quay-io:username
+            QUAY_PASSWORD=quay-io:token
+          export_env: false
+
+      - name: Copy image to quay
+        env:
+          IMAGE_VERSION: ${{ github.ref_name }}
+          DOCKER_REPO: "ghcr.io/${{ github.repository }}"
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          QUAY_USERNAME: ${{ fromJSON(steps.secrets.outputs.secrets || '{}').QUAY_USERNAME }}
+          QUAY_PASSWORD: ${{ fromJSON(steps.secrets.outputs.secrets || '{}').QUAY_PASSWORD }}
+        run: |
+          docker run --rm quay.io/containers/skopeo:v1.18.0 \
+            copy --multi-arch all \
+            --src-creds "$GHCR_USERNAME:$GHCR_PASSWORD" \
+            --dest-creds "$QUAY_USERNAME:$QUAY_PASSWORD" \
+            docker://${DOCKER_REPO}:${IMAGE_VERSION} \
+            docker://quay.io/grafana-operator/grafana-operator:${IMAGE_VERSION}

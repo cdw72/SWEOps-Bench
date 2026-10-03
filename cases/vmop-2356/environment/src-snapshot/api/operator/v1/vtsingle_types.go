@@ -1,0 +1,352 @@
+/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/utils/ptr"
+
+	vmv1beta1 "github.com/VictoriaMetrics/operator/api/operator/v1beta1"
+)
+
+// VTSingleSpec defines the desired state of VTSingle
+// +k8s:openapi-gen=true
+type VTSingleSpec struct {
+
+	// PodMetadata configures Labels and Annotations which are propagated to the VTSingle pods.
+	// +optional
+	PodMetadata *vmv1beta1.EmbeddedObjectMetadata `json:"podMetadata,omitempty"`
+	// ManagedMetadata defines metadata that will be added to the all objects
+	// created by operator for the given CustomResource
+	ManagedMetadata *vmv1beta1.ManagedObjectsMetadata `json:"managedMetadata,omitempty"`
+
+	vmv1beta1.CommonAppsParams `json:",inline,omitempty"`
+
+	// LogLevel for VictoriaTraces to be configured with.
+	// +optional
+	// +kubebuilder:validation:Enum=INFO;WARN;ERROR;FATAL;PANIC
+	LogLevel string `json:"logLevel,omitempty"`
+	// LogFormat for VTSingle to be configured with.
+	// +optional
+	// +kubebuilder:validation:Enum=default;json
+	LogFormat string `json:"logFormat,omitempty"`
+	// StorageDataPath disables spec.storage option and overrides arg for victoria-traces binary --storageDataPath,
+	// its users responsibility to mount proper device into given path.
+	// +optional
+	StorageDataPath string `json:"storageDataPath,omitempty"`
+	// Storage is the definition of how storage will be used by the VTSingle
+	// by default it`s empty dir
+	// +optional
+	Storage *corev1.PersistentVolumeClaimSpec `json:"storage,omitempty"`
+	// StorageMeta defines annotations and labels attached to PVC for given vtsingle CR
+	// +optional
+	StorageMetadata vmv1beta1.EmbeddedObjectMetadata `json:"storageMetadata,omitempty"`
+	// RetentionPeriod for the stored traces
+	// https://docs.victoriametrics.com/victoriatraces/#configure-and-run-victoriatraces
+	// +optional
+	// +kubebuilder:validation:Pattern:="^[0-9]+(h|d|w|y)?$"
+	RetentionPeriod string `json:"retentionPeriod,omitempty"`
+	// RetentionMaxDiskSpaceUsageBytes for the stored traces
+	// VictoriaTraces keeps at least two last days of data in order to guarantee that the traces for the last day can be returned in queries.
+	// This means that the total disk space usage may exceed the -retention.maxDiskSpaceUsageBytes,
+	// if the size of the last two days of data exceeds the -retention.maxDiskSpaceUsageBytes.
+	// https://docs.victoriametrics.com/victoriatraces/#configure-and-run-victoriatraces
+	// +optional
+	RetentionMaxDiskSpaceUsageBytes vmv1beta1.BytesString `json:"retentionMaxDiskSpaceUsageBytes,omitempty"`
+	// FutureRetention for the stored traces
+	// Log entries with timestamps bigger than now+futureRetention are rejected during data ingestion;
+	// see https://docs.victoriametrics.com/victoriatraces/#configure-and-run-victoriatraces
+	// +optional
+	// +kubebuilder:validation:Pattern:="^[0-9]+(h|d|y)?$"
+	FutureRetention string `json:"futureRetention,omitempty"`
+	// LogNewStreams Whether to log creation of new streams; this can be useful for debugging of high cardinality issues with log streams;
+	// see https://docs.victoriametrics.com/victoriatraces/#configure-and-run-victoriatraces
+	LogNewStreams bool `json:"logNewStreams,omitempty"`
+	// Whether to log all the ingested log entries; this can be useful for debugging of data ingestion;
+	// see https://docs.victoriametrics.com/victoriatraces/#configure-and-run-victoriatraces
+	LogIngestedRows bool `json:"logIngestedRows,omitempty"`
+	// ServiceSpec that will be added to vtsingle service spec
+	// +optional
+	ServiceSpec *vmv1beta1.AdditionalServiceSpec `json:"serviceSpec,omitempty"`
+	// ServiceScrapeSpec that will be added to vtsingle VMServiceScrape spec
+	// +optional
+	ServiceScrapeSpec *vmv1beta1.VMServiceScrapeSpec `json:"serviceScrapeSpec,omitempty"`
+	// ServiceAccountName is the name of the ServiceAccount to use to run the pods
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// ComponentVersion defines default images tag for all components.
+	// it can be overwritten with component specific image.tag value.
+	// +optional
+	ComponentVersion string `json:"componentVersion,omitempty"`
+}
+
+// VTSingleStatus defines the observed state of VTSingle
+type VTSingleStatus struct {
+	vmv1beta1.StatusMetadata `json:",inline"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	LastAppliedSpec *VTSingleSpec `json:"lastAppliedSpec,omitempty"`
+	// ParsingSpecError contents error with context if operator was failed to parse json object from kubernetes api server
+	ParsingSpecError string `json:"-" yaml:"-"`
+}
+
+// GetStatusMetadata returns metadata for object status
+func (cr *VTSingle) GetStatusMetadata() *vmv1beta1.StatusMetadata {
+	return &cr.Status.StatusMetadata
+}
+
+// VTSingle is fast, cost-effective and scalable traces database.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +operator-sdk:gen-csv:customresourcedefinitions.displayName="VTSingle App"
+// +operator-sdk:gen-csv:customresourcedefinitions.resources="Deployment,apps"
+// +operator-sdk:gen-csv:customresourcedefinitions.resources="Service,v1"
+// +operator-sdk:gen-csv:customresourcedefinitions.resources="Secret,v1"
+// +genclient
+// +k8s:openapi-gen=true
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=vtsingles,scope=Namespaced
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.status",description="Current status of traces instance update process"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// VTSingle is the Schema for the API
+type VTSingle struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   VTSingleSpec   `json:"spec,omitempty"`
+	Status VTSingleStatus `json:"status,omitempty"`
+}
+
+// GetStatus implements reconcile.ObjectWithDeepCopyAndStatus interface
+func (cr *VTSingle) GetStatus() *VTSingleStatus {
+	return &cr.Status
+}
+
+// DefaultStatusFields implements reconcile.ObjectWithDeepCopyAndStatus interface
+func (cr *VTSingle) DefaultStatusFields(vs *VTSingleStatus) {
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface
+func (cr *VTSingle) UnmarshalJSON(src []byte) error {
+	type pcr VTSingle
+	type shadow struct {
+		*pcr
+		Spec json.RawMessage `json:"spec"`
+	}
+	s := shadow{pcr: (*pcr)(cr)}
+	if err := json.Unmarshal(src, &s); err != nil {
+		return err
+	}
+	if len(s.Spec) > 0 {
+		if err := vmv1beta1.UnmarshalSpecStrict(s.Spec, &cr.Spec); err != nil {
+			cr.Status.ParsingSpecError = fmt.Sprintf("cannot parse VTSingleSpec: %s, err: %s", string(s.Spec), err)
+		}
+	}
+	return nil
+}
+
+// +kubebuilder:object:root=true
+
+// VTSingleList contains a list of VTSingle
+type VTSingleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []VTSingle `json:"items"`
+}
+
+func (r *VTSingle) PodAnnotations() map[string]string {
+	annotations := map[string]string{}
+	if r.Spec.PodMetadata != nil {
+		for annotation, value := range r.Spec.PodMetadata.Annotations {
+			annotations[annotation] = value
+		}
+	}
+	return annotations
+}
+
+// AsOwner returns owner references with current object as owner
+func (r *VTSingle) AsOwner() metav1.OwnerReference {
+	return metav1.OwnerReference{
+		APIVersion:         r.APIVersion,
+		Kind:               r.Kind,
+		Name:               r.Name,
+		UID:                r.UID,
+		Controller:         ptr.To(true),
+		BlockOwnerDeletion: ptr.To(true),
+	}
+}
+
+// ProbePath implements build.probeCRD interface
+func (cr *VTSingle) ProbePath() string {
+	return vmv1beta1.BuildPathWithPrefixFlag(cr.Spec.ExtraArgs, healthPath)
+}
+
+// ProbeScheme implements build.probeCRD interface
+func (cr *VTSingle) ProbeScheme() string {
+	return strings.ToUpper(vmv1beta1.HTTPProtoFromFlags(cr.Spec.ExtraArgs))
+}
+
+// ProbePort implements build.probeCRD interface
+func (cr *VTSingle) ProbePort() string {
+	return cr.Spec.Port
+}
+
+// ProbeNeedLiveness implements build.probeCRD interface
+func (cr *VTSingle) ProbeNeedLiveness() bool {
+	return false
+}
+
+// FinalAnnotations returns annotations to be applied for created objects
+func (cr *VTSingle) FinalAnnotations() map[string]string {
+	var v map[string]string
+	if cr.Spec.ManagedMetadata != nil {
+		v = labels.Merge(cr.Spec.ManagedMetadata.Annotations, v)
+	}
+	return v
+}
+
+// SelectorLabels returns unique labels for object
+func (cr *VTSingle) SelectorLabels() map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":      "vtsingle",
+		"app.kubernetes.io/instance":  cr.Name,
+		"app.kubernetes.io/component": "monitoring",
+		"managed-by":                  "vm-operator",
+	}
+}
+
+// PodLabels returns labels attached to the podMetadata
+func (cr *VTSingle) PodLabels() map[string]string {
+	lbls := cr.SelectorLabels()
+	if cr.Spec.PodMetadata == nil {
+		return lbls
+	}
+	return labels.Merge(cr.Spec.PodMetadata.Labels, lbls)
+}
+
+// FinalLabels returns combination of selector and managed labels
+func (cr *VTSingle) FinalLabels() map[string]string {
+	return cr.ResourceLabels(nil)
+}
+
+// ResourceLabels returns combination of selector, resource and managed labels
+func (cr *VTSingle) ResourceLabels(input map[string]string) map[string]string {
+	var v map[string]string
+	if cr.Spec.ManagedMetadata != nil {
+		v = cr.Spec.ManagedMetadata.Labels
+	}
+	v = labels.Merge(v, input)
+	return labels.Merge(v, cr.SelectorLabels())
+}
+
+// PrefixedName format name of the component with hard-coded prefix
+func (cr *VTSingle) PrefixedName() string {
+	return fmt.Sprintf("vtsingle-%s", cr.Name)
+}
+
+// GetMetricsPath returns prefixed path for metric requests
+func (cr *VTSingle) GetMetricsPath() string {
+	return vmv1beta1.BuildPathWithPrefixFlag(cr.Spec.ExtraArgs, metricsPath)
+}
+
+// UseTLS returns true if TLS is enabled
+func (cr *VTSingle) UseTLS() bool {
+	return vmv1beta1.UseTLS(cr.Spec.ExtraArgs)
+}
+
+// Validate checks if spec is correct
+func (cr *VTSingle) Validate() error {
+	if vmv1beta1.MustSkipCRValidation(cr) {
+		return nil
+	}
+	if cr.Spec.ServiceSpec != nil && cr.Spec.ServiceSpec.Name == cr.PrefixedName() {
+		return fmt.Errorf("spec.serviceSpec.Name cannot be equal to prefixed name=%q", cr.PrefixedName())
+	}
+	if err := cr.Spec.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetExtraArgs returns additionally configured command-line arguments
+func (cr *VTSingle) GetExtraArgs() map[string]string {
+	return cr.Spec.ExtraArgs
+}
+
+// GetServiceScrape returns overrides for serviceScrape builder
+func (cr *VTSingle) GetServiceScrape() *vmv1beta1.VMServiceScrapeSpec {
+	return cr.Spec.ServiceScrapeSpec
+}
+
+// GetServiceAccountName returns service account name for components
+func (cr *VTSingle) GetServiceAccountName() string {
+	if cr.Spec.ServiceAccountName == "" {
+		return cr.PrefixedName()
+	}
+	return cr.Spec.ServiceAccountName
+}
+
+// IsOwnsServiceAccount checks if ServiceAccountName is set explicitly
+func (cr *VTSingle) IsOwnsServiceAccount() bool {
+	return cr.Spec.ServiceAccountName == ""
+}
+
+// AsURL returns URL for components access
+func (cr *VTSingle) AsURL() string {
+	port := cr.Spec.Port
+	if port == "" {
+		port = "10428"
+	}
+	if cr.Spec.ServiceSpec != nil && cr.Spec.ServiceSpec.UseAsDefault {
+		for _, svcPort := range cr.Spec.ServiceSpec.Spec.Ports {
+			if svcPort.Name == "http" {
+				port = fmt.Sprintf("%d", svcPort.Port)
+				break
+			}
+		}
+	}
+	return fmt.Sprintf("%s://%s.%s.svc:%s", vmv1beta1.HTTPProtoFromFlags(cr.Spec.ExtraArgs), cr.PrefixedName(), cr.Namespace, port)
+}
+
+// LastSpecUpdated compares spec with last applied spec stored, replaces old spec and returns true if it's updated
+func (cr *VTSingle) LastSpecUpdated() bool {
+	updated := cr.Status.LastAppliedSpec == nil || !equality.Semantic.DeepEqual(&cr.Spec, cr.Status.LastAppliedSpec)
+	cr.Status.LastAppliedSpec = cr.Spec.DeepCopy()
+	return updated
+}
+
+// UseProxyProtocol implements build.probeCRD interface
+func (cr *VTSingle) UseProxyProtocol() bool {
+	return vmv1beta1.UseProxyProtocol(cr.Spec.ExtraArgs)
+}
+
+func (cr *VTSingle) Paused() bool {
+	return cr.Spec.Paused
+}
+
+// GetAdditionalService returns AdditionalServiceSpec settings
+func (cr *VTSingle) GetAdditionalService() *vmv1beta1.AdditionalServiceSpec {
+	return cr.Spec.ServiceSpec
+}

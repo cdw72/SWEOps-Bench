@@ -1,0 +1,150 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: setup-redis-replication
+spec:
+  template: true
+  steps:
+    - try:
+        - apply:
+            file: replication.yaml
+        - apply:
+            file: secret.yaml
+        - apply:
+            file: ../../../../data-assert/resources.yaml
+        - assert:
+            file: ready-sts.yaml
+        - assert:
+            file: ready-svc.yaml
+        - assert:
+            file: ready-pvc.yaml
+        - assert:
+            file: ready-replication.yaml
+        - assert:
+            file: secret.yaml
+
+    - name: Check maxmemory
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              #!/bin/bash
+              set -e
+
+              # maxmemory should not equal to 0
+              MAXMEMORY=$(kubectl exec -n ${NAMESPACE} redis-replication-0 -c redis-replication -- redis-cli --no-auth-warning -a Opstree1234 config get maxmemory | grep -A1 "maxmemory" | tail -n1)
+              if [ "$MAXMEMORY" = "0" ]; then
+                echo "maxmemory value is $MAXMEMORY, expected not 0"
+                exit 1
+              fi
+              exit 0
+
+    - name: Assert dynamic config
+      description: dynamicConfig is applied at runtime via CONFIG SET to every replica without a restart
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              #!/bin/bash
+              set -e
+
+              # The operator applies dynamicConfig on a reconcile after the pods are
+              # ready, so poll until every replica reflects the CONFIG SET values.
+              for i in $(seq 1 30); do
+                ALL_OK=true
+                for POD in redis-replication-0 redis-replication-1 redis-replication-2; do
+                  CMD="kubectl exec -n ${NAMESPACE} ${POD} -c redis-replication -- redis-cli --no-auth-warning -a Opstree1234"
+                  POLICY=$(${CMD} config get maxmemory-policy | grep -A1 "maxmemory-policy" | tail -n1)
+                  SLOWLOG=$(${CMD} config get slowlog-log-slower-than | grep -A1 "slowlog-log-slower-than" | tail -n1)
+                  if [ "$POLICY" != "allkeys-lru" ] || [ "$SLOWLOG" != "5000" ]; then
+                    echo "attempt ${i}: ${POD} maxmemory-policy=${POLICY} slowlog-log-slower-than=${SLOWLOG}, waiting..."
+                    ALL_OK=false
+                    break
+                  fi
+                done
+                if [ "$ALL_OK" = "true" ]; then
+                  echo "all replicas have correct dynamic configuration"
+                  exit 0
+                fi
+                sleep 3
+              done
+              echo "timed out waiting for dynamic configuration to be applied"
+              exit 1
+            check:
+              (contains($stdout, 'all replicas have correct dynamic configuration')): true
+
+
+    - name: Resize pvc
+      try:
+        - script:
+            timeout: 10s
+            content: |
+              PATCH_DATA='[{"op": "replace", "path": "/spec/storage/volumeClaimTemplate/spec/resources/requests/storage", "value": "2Gi"}]'
+              kubectl patch redisreplication redis-replication --namespace ${NAMESPACE} --type='json' -p="${PATCH_DATA}"
+        - assert:
+            timeout: 300s
+            file: ready-pvc-resized.yaml
+
+    - name: Put data
+      try:
+        - script:
+            timeout: 90s
+            content: >
+              kubectl exec --namespace ${NAMESPACE} --container data-assert data-assert --
+              bash -c  "cd /go/src/data-assert && go run main.go gen-redis-data \
+                        --host redis-replication-s-0.redis-replication-s-hl.${NAMESPACE}.svc.cluster.local:26379 \
+                        --mode sentinel \
+                        --master-name mymaster \
+                        --password Opstree1234"
+            check:
+              (contains($stdout, 'OK')): true
+
+    - name: Hange the master
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              kubectl exec --namespace ${NAMESPACE} redis-replication-0 -- redis-cli -p 6379  -a Opstree1234 EVAL "while true do end" 0
+
+    - name: Check master changed
+      try:
+        - sleep:
+            duration: 60s
+        - script:
+            timeout: 10s
+            content: |
+              export MASTER_POD_FROM_STATUS=$(kubectl -n ${NAMESPACE} get redisreplication redis-replication -o jsonpath='{.status.masterNode}');
+              echo "$MASTER_POD_FROM_STATUS"
+            check:
+              (contains($stdout, 'redis-replication-0')): false
+
+    - name: Assert data
+      try:
+        - script:
+            timeout: 30s
+            content: >
+              kubectl exec --namespace ${NAMESPACE} --container data-assert data-assert --
+              bash -c "cd /go/src/data-assert && go run main.go chk-redis-data \
+                       --host redis-replication-s-0.redis-replication-s-hl.${NAMESPACE}.svc.cluster.local:26379 \
+                       --mode sentinel \
+                       --master-name mymaster \
+                       --password Opstree1234"
+            check:
+              (contains($stdout, 'OK')): true
+
+    - name: redis-replication-uninstall
+      description: Uninstall Redis Replication
+      try:
+        - delete:
+            ref:
+              name: redis-replication
+              kind: RedisReplication
+              apiVersion: redis.redis.opstreelabs.in/v1beta2
+        - error:
+            file: ready-sts.yaml
+        - error:
+            file: ready-svc.yaml
+        - error:
+            file: ready-pvc.yaml

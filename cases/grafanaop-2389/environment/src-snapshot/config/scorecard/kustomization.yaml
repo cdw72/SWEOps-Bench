@@ -1,0 +1,9 @@
+resources:
+- bases/config.yaml
+patches:
+- path: patches/olm.config.yaml
+  target:
+    group: scorecard.operatorframework.io
+    kind: Configuration
+    name: config
+    version: v1alpha3

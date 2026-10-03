@@ -1,0 +1,62 @@
+{
+  "case_id": "sparkop-2832",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_v2-4-0.yaml",
+  "operator_ready": [
+    "-n default get deploy spark-operator-controller",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cr-2832.yaml",
+      "ns": "default",
+      "settle": 180
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n default logs deploy/spark-operator-controller --tail=500",
+      "nil pointer dereference"
+    ],
+    [
+      "-n default logs deploy/spark-operator-controller --tail=500",
+      "GetExecutorRequestResource"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "default"
+  ],
+  "pre_manifests": [
+    "volcano-dev.yaml"
+  ],
+  "pre_ready": [
+    [
+      "wait --for=condition=Established crd/podgroups.scheduling.volcano.sh --timeout=180s",
+      "condition met"
+    ],
+    [
+      "rollout status deploy/volcano-admission -n volcano-system --timeout=300s",
+      "successfully rolled out"
+    ]
+  ],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 60
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/cr-2832.yaml"
+    ]
+  ],
+  "poll_fault_settle": 180
+}

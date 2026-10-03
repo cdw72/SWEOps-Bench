@@ -1,0 +1,18 @@
+{
+ "case": "rdoptwo-283",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "nil_panic_283",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   }
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,70 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: another-name
+spec:
+  #platform: openshift
+  image:
+  imagePullPolicy: Always
+  unsafeFlags:
+    tls: true
+  tls:
+    mode: disabled
+  backup:
+    enabled: false
+    image: perconalab/percona-server-mongodb-operator:0.4.0-backup
+#    storages:
+#    tasks:
+  replsets:
+  - name: rs0
+    terminationGracePeriodSeconds: 300
+    configuration: |
+      operationProfiling:
+        mode: slowOp
+        slowOpThresholdMs: 100
+      security:
+        enableEncryption: true
+        redactClientLogData: false
+      setParameter:
+        ttlMonitorSleepSecs: 60
+        wiredTigerConcurrentReadTransactions: 128
+        wiredTigerConcurrentWriteTransactions: 128
+      storage:
+        engine: wiredTiger
+        wiredTiger:
+          collectionConfig:
+            blockCompressor: snappy
+          engineConfig:
+            directoryForIndexes: false
+            journalCompressor: snappy
+          indexConfig:
+            prefixCompression: true
+    affinity:
+      antiAffinityTopologyKey: none
+    resources:
+      limits:
+        cpu: 500m
+        memory: 0.5G
+      requests:
+        cpu: 100m
+        memory: 0.1G
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 1Gi
+    sidecars:
+    - image: busybox
+      command: ["/bin/sh"]
+      args: ["-c", "while true; do echo echo $(date -u) 'test' >> /dev/null; sleep 5;done"]
+      name: my-sidecar-1
+    - image: busybox
+      command: ["/bin/sh"]
+      args: ["-c", "while true; do echo echo $(date -u) 'test' >> /dev/null; sleep 5;done"]
+      name: my-sidecar-2
+    - image: busybox
+      name: mongod
+    runtimeClassName: container-rc
+    size: 3
+  secrets:
+    users: some-users

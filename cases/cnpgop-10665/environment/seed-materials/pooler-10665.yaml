@@ -1,0 +1,12 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: p
+  namespace: default
+spec:
+  cluster:
+    name: c
+  type: rw
+  instances: 1
+  pgbouncer:
+    poolMode: session

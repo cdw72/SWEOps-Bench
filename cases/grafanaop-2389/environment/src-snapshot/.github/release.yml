@@ -1,0 +1,22 @@
+changelog:
+  exclude:
+    labels:
+      - chore
+      - refactor
+      - release-ignore
+  categories:
+    - title: Breaking changes
+      labels:
+        - release-note-action-required
+    - title: Features
+      labels:
+        - feature
+    - title: Fixes
+      labels:
+        - bugfix
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Documentation
+      labels:
+        - documentation

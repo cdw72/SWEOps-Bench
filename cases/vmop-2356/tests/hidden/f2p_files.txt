@@ -1,0 +1,1 @@
+internal/controller/operator/factory/vmanomaly/config/config_test.go

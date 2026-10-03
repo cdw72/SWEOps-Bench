@@ -1,0 +1,2 @@
+api/operator/v1beta1/vmalertmanagerconfig_types.go
+internal/controller/operator/factory/vmalertmanager/config.go

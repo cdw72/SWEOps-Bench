@@ -1,0 +1,61 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: version-service-unreachable
+  finalizers:
+    - delete-psmdb-pvc
+spec:
+  crVersion: 9.9.9
+  image:
+  initImage: #initImage
+  imagePullPolicy: Always
+  allowUnsafeConfigurations: false
+  updateStrategy: SmartUpdate
+  upgradeOptions:
+    versionServiceEndpoint: https://wrong-check.percona.com
+    apply: 4.2.14-15
+    schedule: "0 2 * * *"
+  replsets:
+  - name: rs0
+    affinity:
+      antiAffinityTopologyKey: none
+    resources:
+      limits:
+        cpu: 500m
+        memory: 0.5G
+      requests:
+        cpu: 100m
+        memory: 0.1G
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 1Gi
+    readinessProbe:
+      failureThreshold: 5
+    livenessProbe:
+      failureThreshold: 3
+    size: 3
+    configuration: |
+      operationProfiling:
+        mode: slowOp
+        slowOpThresholdMs: 100
+      security:
+        enableEncryption: true
+        redactClientLogData: false
+      setParameter:
+        ttlMonitorSleepSecs: 60
+        wiredTigerConcurrentReadTransactions: 128
+        wiredTigerConcurrentWriteTransactions: 128
+      storage:
+        engine: wiredTiger
+        wiredTiger:
+          collectionConfig:
+            blockCompressor: snappy
+          engineConfig:
+            directoryForIndexes: false
+            journalCompressor: snappy
+          indexConfig:
+            prefixCompression: true
+  secrets:
+    users: some-users

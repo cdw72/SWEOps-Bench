@@ -1,0 +1,47 @@
+# Minimal ServiceMonitor + PrometheusRule CRDs (schema-stub): the logging
+# operator only LISTs these kinds to decide PrometheusRuleKey/ServiceMonitorKey
+# support (controllers/logging/logging_controller.go:118-131) -- no
+# prometheus-operator install needed.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: servicemonitors.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: servicemonitors
+    singular: servicemonitor
+    kind: ServiceMonitor
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: prometheusrules.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: prometheusrules
+    singular: prometheusrule
+    kind: PrometheusRule
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true

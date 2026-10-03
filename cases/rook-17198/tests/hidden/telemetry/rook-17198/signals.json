@@ -1,0 +1,20 @@
+{
+ "case": "rook-17198",
+ "confirmed": [
+  {
+   "kind": "cr_state",
+   "target": "cephblockpools.ceph.rook.io",
+   "field": "phase",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "Progressing",
+    "fixed": "Ready"
+   },
+   "note": "ec-pool phase:buggy \u5361 Progressing(operator \u5374\u62a5 ReconcileSucceeded),fixed Ready"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

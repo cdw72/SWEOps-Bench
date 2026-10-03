@@ -1,0 +1,38 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "rook-ceph",
+    "get",
+    "deploy",
+    "rook-ceph-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "go",
+   "build",
+   "-trimpath",
+   "-tags",
+   "ceph_preview",
+   "-o",
+   "/tmp/rec/bin/rook",
+   "./cmd/rook"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/rook",
+    "/usr/local/bin/rook"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "rook-ceph/rook-ceph-operator"
+ },
+ "settle": 120,
+ "slug": "rook-17372"
+}

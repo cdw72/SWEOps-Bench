@@ -1,0 +1,1 @@
+pkg/automationconfig/automation_config_test.go

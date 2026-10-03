@@ -1,0 +1,48 @@
+{
+  "case_id": "mgopone-1024",
+  "operator_ready_timeout": 900,
+  "ensure_ns": [
+    "mongodb"
+  ],
+  "k8s_version": "v1.23",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n mongodb get deploy mongodb-kubernetes-operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-001.yaml",
+      "ns": "mongodb",
+      "settle": 240,
+      "timeout": 600
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n mongodb get statefulsets",
+      "0/1"
+    ],
+    [
+      "-n mongodb get mongodbcommunity test-cluster -o jsonpath={.status.phase}",
+      "Pending"
+    ],
+    [
+      "-n mongodb get events --sort-by=.lastTimestamp",
+      "MountVolume.SetUp failed for volume"
+    ]
+  ],
+  "image_rewrites": [],
+  "poll_healthy_steps": 0,
+  "poll_fault": [
+    [
+      "-n",
+      "mongodb",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 240
+}

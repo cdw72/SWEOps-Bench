@@ -1,0 +1,4 @@
+This file was removed to fit GitHub's 100MB limit.
+Download the official Go 1.18 linux-amd64 toolchain and place it here as
+`go1.18.linux-amd64.tar.gz` before building this case's environment image:
+  wget https://go.dev/dl/go1.18.linux-amd64.tar.gz -O go1.18.linux-amd64.tar.gz

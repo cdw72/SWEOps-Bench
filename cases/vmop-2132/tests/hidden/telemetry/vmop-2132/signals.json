@@ -1,0 +1,29 @@
+{
+ "case": "vmop-2132",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "missing_chat_id",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 18,
+    "fixed": 0
+   },
+   "note": "alertmanager notifier \u6821\u9a8c\u9519\u8bef\u5faa\u73af;\u4e32\u8ba1\u6570\u5f52\u96f6=\u4fee\u597d"
+  },
+  {
+   "kind": "sts_ready",
+   "target": "vmalertmanager-vmalertmanager",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "(\u65e0)",
+    "fixed": "1/1"
+   },
+   "note": "CR \u6c38\u4e0d\u843d\u5730:buggy \u65e0 sts,fixed 1/1"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

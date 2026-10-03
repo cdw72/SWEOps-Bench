@@ -1,0 +1,11 @@
+# logop-2172 (kube-logging/logging-operator #2172) -- the FluentbitAgent the
+# official chart renders with default values: `spec: {}`, i.e. **no metrics
+# section**. That nil Metrics is what the buggy reconciler dereferences.
+# Kept byte-identical in spirit to seed_sieve_case.py's LOGOP_FLUENTBIT_AGENT
+# (name/namespace are what the chart fullname produces).
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: FluentbitAgent
+metadata:
+  name: logop-logging-operator
+  namespace: default
+spec: {}

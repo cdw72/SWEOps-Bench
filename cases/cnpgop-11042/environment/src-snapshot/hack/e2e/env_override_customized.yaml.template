@@ -1,0 +1,39 @@
+# This patch merges the environment with the values read from the controller-manager-env config map
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        envFrom:
+        - configMapRef:
+            name: controller-manager-env
+        env:
+        - name: STANDBY_TCP_USER_TIMEOUT
+          value: "5000"
+        args:
+        - controller
+        - --leader-elect=${LEADER_ELECTION}
+        - --leader-lease-duration=${LEADER_LEASE_DURATION}
+        - --leader-renew-deadline=${LEADER_RENEW_DEADLINE}
+        - --config-map-name=$(OPERATOR_DEPLOYMENT_NAME)-config
+        - --secret-name=$(OPERATOR_DEPLOYMENT_NAME)-config
+        - --webhook-port=9443
+        - --log-level=${LOG_LEVEL}
+        - --pprof-server=true
+        livenessProbe:
+          failureThreshold: ${LIVENESS_PROBE_THRESHOLD}
+        # The resources section is just something we should remove
+        # once the operator had a better way to handle the calculation
+        # of the hash of the binary files
+        resources:
+          limits:
+            cpu: 500m
+            memory: 200Mi
+          requests:
+            cpu: 500m
+            memory: 100Mi

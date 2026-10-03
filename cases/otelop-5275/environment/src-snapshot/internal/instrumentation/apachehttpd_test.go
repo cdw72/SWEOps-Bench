@@ -1,0 +1,603 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package instrumentation
+
+import (
+	"testing"
+
+	"github.com/go-logr/logr"
+	"github.com/stretchr/testify/assert"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/open-telemetry/opentelemetry-operator/apis/v1alpha1"
+)
+
+func TestInjectApacheHttpdagent(t *testing.T) {
+	tests := []struct {
+		name string
+		v1alpha1.ApacheHttpd
+		pod      corev1.Pod
+		expected corev1.Pod
+	}{
+		{
+			name:        "Clone Container not present",
+			ApacheHttpd: v1alpha1.ApacheHttpd{Image: "foo/bar:1"},
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{},
+					},
+				},
+			},
+			expected: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Volumes: []corev1.Volume{
+						{
+							Name: apacheAgentConfigVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+						{
+							Name: apacheAgentVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+					},
+					InitContainers: []corev1.Container{
+						{
+							Name:    apacheAgentCloneContainerName,
+							Image:   "",
+							Command: []string{"cp", "-r", "/usr/local/apache2/conf/.", apacheAgentDirectory + apacheAgentConfigDirectory},
+							VolumeMounts: []corev1.VolumeMount{{
+								Name:      apacheAgentConfigVolume,
+								MountPath: apacheAgentDirectory + apacheAgentConfigDirectory,
+							}},
+						},
+						{
+							Name:    apacheAgentInitContainerName,
+							Image:   "foo/bar:1",
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{apacheHttpdAgentScript, "--", "/usr/local/apache2/conf"},
+							Env: []corev1.EnvVar{
+								{
+									Name:  apacheAttributesEnvVar,
+									Value: "\n#Load the Otel Webserver SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_common.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_resources.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_trace.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_otlp_recordable.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_ostream_span.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_otlp_grpc.so\n#Load the Otel ApacheModule SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_webserver_sdk.so\n#Load the Apache Module. In this example for Apache 2.4\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Load the Apache Module. In this example for Apache 2.2\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel22.so\nLoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Attributes\nApacheModuleEnabled ON\nApacheModuleOtelExporterEndpoint http://otlp-endpoint:4317\nApacheModuleOtelSpanExporter otlp\nApacheModuleResolveBackends  ON\nApacheModuleServiceInstanceId <<SID-PLACEHOLDER>>\nApacheModuleServiceName apache-httpd-service-name\nApacheModuleServiceNamespace req-namespace\nApacheModuleTraceAsError  ON\n",
+								},
+								{
+									Name: apacheServiceInstanceIdEnvVar,
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheAgentConfDirFull,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheDefaultConfigDirectory,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// === Test ConfigPath configuration =============================
+		{
+			name: "ConfigPath honored",
+			ApacheHttpd: v1alpha1.ApacheHttpd{
+				Image:      "foo/bar:1",
+				ConfigPath: "/opt/customPath",
+			},
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{},
+					},
+				},
+			},
+			expected: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Volumes: []corev1.Volume{
+						{
+							Name: apacheAgentConfigVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+						{
+							Name: apacheAgentVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+					},
+					InitContainers: []corev1.Container{
+						{
+							Name:    apacheAgentCloneContainerName,
+							Image:   "",
+							Command: []string{"cp", "-r", "/opt/customPath/.", apacheAgentDirectory + apacheAgentConfigDirectory},
+							VolumeMounts: []corev1.VolumeMount{{
+								Name:      apacheAgentConfigVolume,
+								MountPath: apacheAgentDirectory + apacheAgentConfigDirectory,
+							}},
+						},
+						{
+							Name:    apacheAgentInitContainerName,
+							Image:   "foo/bar:1",
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{apacheHttpdAgentScript, "--", "/opt/customPath"},
+							Env: []corev1.EnvVar{
+								{
+									Name:  apacheAttributesEnvVar,
+									Value: "\n#Load the Otel Webserver SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_common.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_resources.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_trace.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_otlp_recordable.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_ostream_span.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_otlp_grpc.so\n#Load the Otel ApacheModule SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_webserver_sdk.so\n#Load the Apache Module. In this example for Apache 2.4\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Load the Apache Module. In this example for Apache 2.2\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel22.so\nLoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Attributes\nApacheModuleEnabled ON\nApacheModuleOtelExporterEndpoint http://otlp-endpoint:4317\nApacheModuleOtelSpanExporter otlp\nApacheModuleResolveBackends  ON\nApacheModuleServiceInstanceId <<SID-PLACEHOLDER>>\nApacheModuleServiceName apache-httpd-service-name\nApacheModuleServiceNamespace req-namespace\nApacheModuleTraceAsError  ON\n",
+								},
+								{
+									Name: apacheServiceInstanceIdEnvVar,
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheAgentConfDirFull,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: "/opt/customPath",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// === Test Removal of probes and lifecycle =============================
+		{
+			name:        "Init-container-incompatible fields not copied",
+			ApacheHttpd: v1alpha1.ApacheHttpd{Image: "foo/bar:1"},
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							ReadinessProbe: &corev1.Probe{},
+							StartupProbe:   &corev1.Probe{},
+							LivenessProbe:  &corev1.Probe{},
+							Lifecycle:      &corev1.Lifecycle{},
+							ResizePolicy: []corev1.ContainerResizePolicy{
+								{ResourceName: corev1.ResourceCPU, RestartPolicy: corev1.NotRequired},
+								{ResourceName: corev1.ResourceMemory, RestartPolicy: corev1.NotRequired},
+							},
+						},
+					},
+				},
+			},
+			expected: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Volumes: []corev1.Volume{
+						{
+							Name: apacheAgentConfigVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+						{
+							Name: apacheAgentVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+					},
+					InitContainers: []corev1.Container{
+						{
+							Name:    apacheAgentCloneContainerName,
+							Image:   "",
+							Command: []string{"cp", "-r", "/usr/local/apache2/conf/.", apacheAgentDirectory + apacheAgentConfigDirectory},
+							VolumeMounts: []corev1.VolumeMount{{
+								Name:      apacheAgentConfigVolume,
+								MountPath: apacheAgentDirectory + apacheAgentConfigDirectory,
+							}},
+						},
+						{
+							Name:    apacheAgentInitContainerName,
+							Image:   "foo/bar:1",
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{apacheHttpdAgentScript, "--", "/usr/local/apache2/conf"},
+							Env: []corev1.EnvVar{
+								{
+									Name:  apacheAttributesEnvVar,
+									Value: "\n#Load the Otel Webserver SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_common.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_resources.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_trace.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_otlp_recordable.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_ostream_span.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_otlp_grpc.so\n#Load the Otel ApacheModule SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_webserver_sdk.so\n#Load the Apache Module. In this example for Apache 2.4\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Load the Apache Module. In this example for Apache 2.2\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel22.so\nLoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Attributes\nApacheModuleEnabled ON\nApacheModuleOtelExporterEndpoint http://otlp-endpoint:4317\nApacheModuleOtelSpanExporter otlp\nApacheModuleResolveBackends  ON\nApacheModuleServiceInstanceId <<SID-PLACEHOLDER>>\nApacheModuleServiceName apache-httpd-service-name\nApacheModuleServiceNamespace req-namespace\nApacheModuleTraceAsError  ON\n",
+								},
+								{
+									Name: apacheServiceInstanceIdEnvVar,
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheAgentConfDirFull,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheDefaultConfigDirectory,
+								},
+							},
+							ReadinessProbe: &corev1.Probe{},
+							StartupProbe:   &corev1.Probe{},
+							LivenessProbe:  &corev1.Probe{},
+							Lifecycle:      &corev1.Lifecycle{},
+							ResizePolicy: []corev1.ContainerResizePolicy{
+								{ResourceName: corev1.ResourceCPU, RestartPolicy: corev1.NotRequired},
+								{ResourceName: corev1.ResourceMemory, RestartPolicy: corev1.NotRequired},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Pod Namespace specified
+		{
+			name:        "Pod Namespace specified",
+			ApacheHttpd: v1alpha1.ApacheHttpd{Image: "foo/bar:1"},
+			pod: corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "my-namespace",
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{},
+					},
+				},
+			},
+			expected: corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "my-namespace",
+				},
+				Spec: corev1.PodSpec{
+					Volumes: []corev1.Volume{
+						{
+							Name: apacheAgentConfigVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+						{
+							Name: apacheAgentVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+					},
+					InitContainers: []corev1.Container{
+						{
+							Name:    apacheAgentCloneContainerName,
+							Image:   "",
+							Command: []string{"cp", "-r", "/usr/local/apache2/conf/.", apacheAgentDirectory + apacheAgentConfigDirectory},
+							VolumeMounts: []corev1.VolumeMount{{
+								Name:      apacheAgentConfigVolume,
+								MountPath: apacheAgentDirectory + apacheAgentConfigDirectory,
+							}},
+						},
+						{
+							Name:    apacheAgentInitContainerName,
+							Image:   "foo/bar:1",
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{apacheHttpdAgentScript, "--", "/usr/local/apache2/conf"},
+							Env: []corev1.EnvVar{
+								{
+									Name:  apacheAttributesEnvVar,
+									Value: "\n#Load the Otel Webserver SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_common.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_resources.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_trace.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_otlp_recordable.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_ostream_span.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_otlp_grpc.so\n#Load the Otel ApacheModule SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_webserver_sdk.so\n#Load the Apache Module. In this example for Apache 2.4\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Load the Apache Module. In this example for Apache 2.2\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel22.so\nLoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Attributes\nApacheModuleEnabled ON\nApacheModuleOtelExporterEndpoint http://otlp-endpoint:4317\nApacheModuleOtelSpanExporter otlp\nApacheModuleResolveBackends  ON\nApacheModuleServiceInstanceId <<SID-PLACEHOLDER>>\nApacheModuleServiceName apache-httpd-service-name\nApacheModuleServiceNamespace my-namespace\nApacheModuleTraceAsError  ON\n",
+								},
+								{
+									Name: apacheServiceInstanceIdEnvVar,
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheAgentConfDirFull,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheDefaultConfigDirectory,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	resourceMap := map[string]string{
+		string(semconv.K8SDeploymentNameKey): "apache-httpd-service-name",
+		string(semconv.K8SNamespaceNameKey):  "req-namespace",
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pod := injectApacheHttpdagent(logr.Discard(), test.ApacheHttpd, test.pod, false, &test.pod.Spec.Containers[0], "http://otlp-endpoint:4317", resourceMap, v1alpha1.InstrumentationSpec{})
+			assert.Equal(t, test.expected, pod)
+		})
+	}
+}
+
+func TestInjectApacheHttpdagentUnknownNamespace(t *testing.T) {
+	tests := []struct {
+		name string
+		v1alpha1.ApacheHttpd
+		pod      corev1.Pod
+		expected corev1.Pod
+	}{
+		{
+			name:        "Clone Container not present, unknown namespace",
+			ApacheHttpd: v1alpha1.ApacheHttpd{Image: "foo/bar:1"},
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{},
+					},
+				},
+			},
+			expected: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Volumes: []corev1.Volume{
+						{
+							Name: apacheAgentConfigVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+						{
+							Name: apacheAgentVolume,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: &defaultVolumeLimitSize,
+								},
+							},
+						},
+					},
+					InitContainers: []corev1.Container{
+						{
+							Name:    apacheAgentCloneContainerName,
+							Image:   "",
+							Command: []string{"cp", "-r", "/usr/local/apache2/conf/.", apacheAgentDirectory + apacheAgentConfigDirectory},
+							VolumeMounts: []corev1.VolumeMount{{
+								Name:      apacheAgentConfigVolume,
+								MountPath: apacheAgentDirectory + apacheAgentConfigDirectory,
+							}},
+						},
+						{
+							Name:    apacheAgentInitContainerName,
+							Image:   "foo/bar:1",
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{apacheHttpdAgentScript, "--", "/usr/local/apache2/conf"},
+							Env: []corev1.EnvVar{
+								{
+									Name:  apacheAttributesEnvVar,
+									Value: "\n#Load the Otel Webserver SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_common.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_resources.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_trace.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_otlp_recordable.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_ostream_span.so\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_exporter_otlp_grpc.so\n#Load the Otel ApacheModule SDK\nLoadFile /opt/opentelemetry-webserver/agent/sdk_lib/lib/libopentelemetry_webserver_sdk.so\n#Load the Apache Module. In this example for Apache 2.4\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Load the Apache Module. In this example for Apache 2.2\n#LoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel22.so\nLoadModule otel_apache_module /opt/opentelemetry-webserver/agent/WebServerModule/Apache/libmod_apache_otel.so\n#Attributes\nApacheModuleEnabled ON\nApacheModuleOtelExporterEndpoint http://otlp-endpoint:4317\nApacheModuleOtelSpanExporter otlp\nApacheModuleResolveBackends  ON\nApacheModuleServiceInstanceId <<SID-PLACEHOLDER>>\nApacheModuleServiceName apache-httpd-service-name\nApacheModuleServiceNamespace apache-httpd\nApacheModuleTraceAsError  ON\n",
+								},
+								{
+									Name: apacheServiceInstanceIdEnvVar,
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheAgentConfDirFull,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      apacheAgentVolume,
+									MountPath: apacheAgentDirectory + apacheAgentSubDirectory,
+								},
+								{
+									Name:      apacheAgentConfigVolume,
+									MountPath: apacheDefaultConfigDirectory,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	resourceMap := map[string]string{
+		string(semconv.K8SDeploymentNameKey): "apache-httpd-service-name",
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pod := injectApacheHttpdagent(logr.Discard(), test.ApacheHttpd, test.pod, false, &test.pod.Spec.Containers[0], "http://otlp-endpoint:4317", resourceMap, v1alpha1.InstrumentationSpec{})
+			assert.Equal(t, test.expected, pod)
+		})
+	}
+}
+
+// Regression test: when the container's VolumeMounts slice has spare capacity
+// (e.g. after Istio injection), append aliasing corrupts the clone init
+// container's mounts.
+func TestInjectApacheHttpdagentVolumemountAliasing(t *testing.T) {
+	// Spare capacity is the trigger — simulates a prior webhook leaving room.
+	mounts := make([]corev1.VolumeMount, 0, 4)
+	mounts = append(mounts,
+		corev1.VolumeMount{Name: "a", MountPath: "/a"},
+		corev1.VolumeMount{Name: "b", MountPath: "/b"},
+	)
+
+	pod := corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{VolumeMounts: mounts}}}}
+	result := injectApacheHttpdagent(logr.Discard(), v1alpha1.ApacheHttpd{Image: "foo/bar:1"},
+		pod, false, &pod.Spec.Containers[0], "http://otlp:4317",
+		map[string]string{string(semconv.K8SDeploymentNameKey): "svc"}, v1alpha1.InstrumentationSpec{})
+
+	clone := result.Spec.InitContainers[0]
+	lastMount := clone.VolumeMounts[len(clone.VolumeMounts)-1]
+	assert.Equal(t, apacheAgentConfigVolume, lastMount.Name,
+		"clone's config mount was corrupted by slice aliasing: %v", clone.VolumeMounts)
+	assert.Equal(t, apacheAgentConfDirFull, lastMount.MountPath)
+}
+
+func TestApacheInitContainerMissing(t *testing.T) {
+	tests := []struct {
+		name     string
+		pod      corev1.Pod
+		expected bool
+	}{
+		{
+			name: "InitContainer_Already_Inject",
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{
+							Name: "istio-init",
+						},
+						{
+							Name: apacheAgentInitContainerName,
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "InitContainer_Absent_1",
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{
+							Name: "istio-init",
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "InitContainer_Absent_2",
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{},
+			},
+			expected: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := isApacheInitContainerMissing(test.pod, apacheAgentInitContainerName)
+			assert.Equal(t, test.expected, result)
+		})
+	}
+}

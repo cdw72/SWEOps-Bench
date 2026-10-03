@@ -1,0 +1,31 @@
+{
+ "case": "cnpgop-11042",
+ "confirmed": [
+  {
+   "kind": "cr_state",
+   "target": "clusters.postgresql.cnpg.io",
+   "field": "phase",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "Setting up primary",
+    "fixed": "Cluster is unrecoverable and needs manual intervention"
+   },
+   "note": "buggy \u5361 Setting up primary;fixed \u8fdb PhaseUnrecoverable(api/v1/cluster_types.go:749 \u957f\u4e32,\u975e\u77ed 'Unrecoverable')"
+  },
+  {
+   "kind": "cr_state",
+   "target": "clusters.postgresql.cnpg.io",
+   "field": "phase_reason",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "Creating primary instance cluster-1",
+    "fixed": "Instance creation failed for the following jobs: cluster-1-initdb. Check the job logs ..."
+   },
+   "note": "issue \u8bed\u4e49\u5ba1\u8ba1(2026-09-10)\u8865:buggy \u9759\u9ed8\u6b7b\u7b49 'Creating primary instance' vs fixed \u660e\u62a5 failed jobs(fail-fast \u672c\u4f53);\u4e24\u4fa7\u90fd\u6709\u503c,\u975e\u7f3a\u5e2d\u5f62\u3002\u6458\u8981\u52a0 phase_reason \u540e\u53ef\u89c1"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

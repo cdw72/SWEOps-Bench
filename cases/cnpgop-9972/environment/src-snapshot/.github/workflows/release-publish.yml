@@ -1,0 +1,444 @@
+# When a release tag is pushed, create and publish operator images on GitHub
+# Registry. Then generate a release on GitHub.
+name: release-publish
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions: read-all
+
+env:
+  # renovate: datasource=golang-version depName=golang versioning=loose
+  GOLANG_VERSION: "1.25.7"
+  REGISTRY: "ghcr.io"
+
+jobs:
+
+  check-version:
+    name: Evaluate release tag
+    runs-on: ubuntu-24.04
+    outputs:
+      is_latest: ${{ steps.check-release.outputs.is_latest }}
+      is_stable: ${{ steps.check-release.outputs.is_stable }}
+      is_rc: ${{ steps.check-release.outputs.is_rc }}
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # To identify the commit we need the history and all the tags.
+          fetch-depth: 0
+      -
+        name: Check release version
+        id: check-release
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          latest_release_branch=$(git branch -rl 'origin/release-*' | sort -r | head -n1 | sed -e 's/^.*\(release-.*\)/\1/')
+          current_release_branch=$(echo "${tag}" | sed -e 's/\([0-9]\+.[0-9]\+\).*/release-\1/')
+          is_latest="false"
+          if [[ "$latest_release_branch" == "$current_release_branch" ]]; then
+            is_latest="true"
+          fi
+          is_stable="false"
+          if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            is_stable="true"
+          fi
+          is_rc="false"
+          if [[ "$tag" =~ ^.*-rc[0-9]+$ ]]; then
+            is_rc="true"
+          fi
+          echo "is_latest=${is_latest}" >> $GITHUB_OUTPUT
+          echo "is_stable=${is_stable}" >> $GITHUB_OUTPUT
+          echo "is_rc=${is_rc}" >> $GITHUB_OUTPUT
+
+  release:
+    name: Create Github release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    needs:
+      - check-version
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      -
+        name: Get tag
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          version="${tag#v}"
+          file=$(echo ${version} | awk -F '[.]' '{print "release_notes/v"$1"."$2".md"}')
+          echo "TAG=${tag}" >> $GITHUB_ENV
+          echo "VERSION=${version}" >> $GITHUB_ENV
+          echo "FILE=${file}" >> $GITHUB_ENV
+      -
+        name: Generate release notes
+        run: |
+          docker run --rm -v $(pwd):/src mist/submark \
+            submark -O --h2 "Version ${{ env.TAG }}" \
+            --out-file /src/release_notes.md \
+            /src/docs/src/${{ env.FILE }}
+      -
+        name: Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          body_path: release_notes.md
+          draft: false
+          name: v${{ env.TAG }}
+          files: releases/cnpg-${{ env.VERSION }}.yaml
+          make_latest: ${{ needs.check-version.outputs.is_latest == 'true' && needs.check-version.outputs.is_stable == 'true' }}
+          prerelease: ${{ needs.check-version.outputs.is_stable == 'false' || needs.check-version.outputs.is_rc == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-binaries:
+    name: Build containers
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+      contents: write
+      id-token: write
+    needs:
+      - check-version
+    outputs:
+      version: ${{ env.IMAGE_TAG }}
+      author_name: ${{ steps.build-meta.outputs.author_name }}
+      author_email: ${{ steps.build-meta.outputs.author_email }}
+      platforms: ${{ env.PLATFORMS }}
+      olm_img: ${{ steps.olm-image.outputs.olm_image }}
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # To identify the commit we need the history and all the tags.
+          fetch-depth: 0
+      -
+        name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+      -
+        name: Build meta
+        id: build-meta
+        run: |
+          commit_sha=${{ github.sha }}
+          commit_date=$(git log -1 --pretty=format:'%ad' --date short "${commit_sha}")
+          tag="${GITHUB_REF#refs/tags/v}"
+
+          # get git user and email
+          author_name=$(git show -s --format='%an' "${commit_sha}")
+          author_email=$(git show -s --format='%ae' "${commit_sha}")
+
+          # use git describe to get the nearest tag and use that to build the version (e.g. 1.4.0-dev24 or 1.4.0)
+          commit_version=$(git describe --tags --match 'v*' "${commit_sha}"| sed -e 's/^v//; s/-g[0-9a-f]\+$//; s/-\([0-9]\+\)$/-dev\1/')
+          commit_short=$(git rev-parse --short "${commit_sha}")
+
+          echo "DATE=${commit_date}" >> $GITHUB_ENV
+          echo "VERSION=${commit_version}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${tag}" >> $GITHUB_ENV
+          echo "REPO_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+          echo "COMMIT=${commit_short}" >> $GITHUB_ENV
+          echo "author_name=${author_name}" >> $GITHUB_OUTPUT
+          echo "author_email=${author_email}" >> $GITHUB_OUTPUT
+      -
+        name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      -
+        name: Set GoReleaser environment
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
+          echo PWD=$(pwd) >> $GITHUB_ENV
+          echo "$GPG_PRIVATE_KEY" > gpg_signing_key.asc
+      -
+        name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser
+          version: v2
+          args: release --clean --timeout 60m
+        env:
+          DATE: ${{ env.DATE }}
+          COMMIT: ${{ env.COMMIT }}
+          VERSION: ${{ env.VERSION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      -
+        name: Publish Krew
+        if: |
+          needs.check-version.outputs.is_latest == 'true' &&
+          needs.check-version.outputs.is_stable == 'true'
+        uses: rajatjindal/krew-release-bot@3d9faef30a82761d610544f62afddca00993eef9 # v0.0.47
+        with:
+          krew_template_file: dist/krew/cnpg.yaml
+      -
+        name: Detect platforms
+        run: |
+          # Keep in mind that adding more platforms (architectures) will increase the building
+          # time even if we use the ghcache for the building process.
+          platforms="linux/amd64,linux/arm64"
+          echo "PLATFORMS=${platforms}" >> $GITHUB_ENV
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: ${{ env.PLATFORMS }}
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      -
+        name: Login to ghcr.io
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      -
+        name: Build and push
+        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
+        id: bake-push
+        env:
+          BUILDX_METADATA_PROVENANCE: disabled
+          environment: "production"
+          buildVersion: ${{ env.VERSION }}
+          tag: ${{ env.IMAGE_TAG }}
+          registry: ${{ env.REGISTRY }}/${{ env.REPO_OWNER }}
+          revision: ${{ env.COMMIT }}
+          latest: ${{ needs.check-version.outputs.is_latest == 'true' && needs.check-version.outputs.is_stable == 'true' }}
+        with:
+          source: .
+          push: true
+          no-cache: true
+          targets: "default"
+      -
+        name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        # See https://github.blog/security/supply-chain-security/safeguard-container-signing-capability-actions/
+        # and https://github.com/actions/starter-workflows/blob/main/ci/docker-publish.yml for more details on
+        # how to use cosign.
+      -
+        name: Sign images
+        run: |
+          images=$(echo '${{ steps.bake-push.outputs.metadata }}' |
+            jq -r '.[] | (."image.name" | sub(",.*";"" )) + "@" + ."containerimage.digest"'
+          )
+          cosign sign --yes ${images}
+      -
+        # Bake returns all the tags for a target's variant in a comma separated list.
+        # We only care about a single tag for OLM, so we remove the "latest" tag and
+        # pick the first entry in order from what's left in the list
+        name: Image for OLM
+        id: olm-image
+        env:
+          ubi_tags: ${{ fromJSON(steps.bake-push.outputs.metadata)['ubi']['image.name'] }}
+        run: |
+          echo "olm_image=$(echo "$ubi_tags" | tr ',' '\n' | grep -v 'latest' | sed 's/^ *//g' | head -n 1)" >> $GITHUB_OUTPUT
+
+  olm-bundle:
+    name: Create OLM bundle and catalog
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    needs:
+      - check-version
+      - release-binaries
+    if: |
+      (always() && !cancelled()) &&
+      needs.release-binaries.result == 'success' &&
+      (
+        needs.check-version.outputs.is_latest == 'true' ||
+        needs.check-version.outputs.is_rc == 'true'
+      )
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: ${{ needs.release-binaries.outputs.platforms }}
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set bundle variables
+        env:
+          OLM_IMG: ${{ needs.release-binaries.outputs.olm_img }}
+        run: |
+          echo "CONTROLLER_IMG=${OLM_IMG}" >> $GITHUB_ENV
+          echo "BUNDLE_IMG=${OLM_IMG}-bundle" >> $GITHUB_ENV
+          echo "CATALOG_IMG=${OLM_IMG}-catalog" >> $GITHUB_ENV
+
+      - name: Create bundle
+        env:
+          CONTROLLER_IMG: ${{ env.CONTROLLER_IMG }}
+          BUNDLE_IMG: ${{ env.BUNDLE_IMG }}
+          CATALOG_IMG: ${{ env.CATALOG_IMG }}
+        run: |
+          make olm-catalog
+
+      - name: Archive the bundle manifests
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: bundle
+          path: |
+            bundle.Dockerfile
+            bundle/
+            cloudnative-pg-catalog.yaml
+
+  operatorhub_pr:
+    name: Create remote PR for OperatorHub
+    runs-on: ubuntu-24.04
+    needs:
+      - release-binaries
+      - olm-bundle
+    if: |
+      (always() && !cancelled()) &&
+      needs.olm-bundle.result == 'success'
+    env:
+      VERSION: ${{ needs.release-binaries.outputs.version }}
+    steps:
+      - name: Checkout community-operators
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: k8s-operatorhub/community-operators
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: bundle
+
+      - name: Copy bundle in the community-operators
+        run: |
+          mkdir -p "operators/cloudnative-pg/${{ env.VERSION }}"
+          cp -R bundle/* "operators/cloudnative-pg/${{ env.VERSION }}"
+          rm -fr cloudnative-pg-catalog.yaml bundle.Dockerfile *.zip bundle/
+
+      - name: Create Remote Pull Request
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8
+        with:
+          token: ${{ secrets.REPO_GHA_PAT }}
+          commit-message: "operator cloudnative-pg (${{ env.VERSION }})"
+          title: "operator cloudnative-pg (${{ env.VERSION }})"
+          signoff: true
+          branch: release-cloudnativepg-${{ env.VERSION }}
+          delete-branch: true
+          push-to-fork: cloudnative-pg/community-operators
+          body: |
+            Thanks submitting your Operator. Please check below list before you create your Pull Request.
+            ### Updates to existing Operators
+
+              * [x]  Did you create a `ci.yaml` file according to the [update instructions](https://github.com/operator-framework/community-operators/blob/master/docs/operator-ci-yaml.md)?
+              * [x]  Is your new CSV pointing to the previous version with the `replaces` property if you chose `replaces-mode` via the `updateGraph` property in `ci.yaml`?
+              * [x]  Is your new CSV referenced in the [appropriate channel](https://github.com/operator-framework/community-operators/blob/master/docs/packaging-operator.md#channels) defined in the `package.yaml` or `annotations.yaml` ?
+              * [x]  Have you tested an update to your Operator when deployed via OLM?
+              * [x]  Is your submission [signed](https://github.com/operator-framework/community-operators/blob/master/docs/contributing-prerequisites.md#sign-your-work)?
+
+            ### Your submission should not
+              * [x]  Modify more than one operator
+              * [x]  Modify an Operator you don't own
+              * [x]  Rename an operator - please remove and add with a different name instead
+              * [x]  Modify any files outside the above mentioned folders
+              * [x]  Contain more than one commit. **Please squash your commits.**
+
+            ### Operator Description must contain (in order)
+              1. [x]  Description about the managed Application and where to find more information
+              2. [x]  Features and capabilities of your Operator and how to use it
+              3. [x]  Any manual steps about potential pre-requisites for using your Operator
+
+            ### Operator Metadata should contain
+              * [x]  Human readable name and 1-liner description about your Operator
+              * [x]  Valid [category name](https://github.com/operator-framework/community-operators/blob/master/docs/packaging-operator.md#categories)<sup>1</sup>
+              * [x]  One of the pre-defined [capability levels](https://github.com/operator-framework/operator-courier/blob/4d1a25d2c8d52f7de6297ec18d8afd6521236aa2/operatorcourier/validate.py#L556)<sup>2</sup>
+              * [x]  Links to the maintainer, source code and documentation
+              * [x]  Example templates for all Custom Resource Definitions intended to be used
+              * [x]  A quadratic logo
+
+            Remember that you can preview your CSV [here](https://operatorhub.io/preview).
+            --
+            <sup>1</sup> If you feel your Operator does not fit any of the pre-defined categories, file an issue against this repo and explain your need
+            <sup>2</sup> For more information see [here](https://sdk.operatorframework.io/docs/overview/#operator-capability-level)
+
+  publish_bundle:
+    name: Publish OLM Bundle
+    needs:
+      - olm-bundle
+      - release-binaries
+    if: |
+      (always() && !cancelled()) &&
+      needs.olm-bundle.result == 'success' &&
+      github.repository_owner == 'cloudnative-pg'
+    env:
+      VERSION: ${{ needs.release-binaries.outputs.version }}
+    runs-on: ubuntu-24.04
+    steps:
+      -
+        name: Checkout artifact
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: cloudnative-pg/artifacts
+          token: ${{ secrets.REPO_GHA_PAT }}
+          ref: main
+          fetch-depth: 0
+      -
+        name: Configure git user
+        run: |
+          git config user.email "${{ needs.release-binaries.outputs.author_email }}"
+          git config user.name "${{ needs.release-binaries.outputs.author_name }}"
+      -
+        name: Download the bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: bundle
+      -
+        name: Copy the bundle
+        run: |
+          mkdir -p "bundles/${{ env.VERSION }}"
+          cp -R bundle/* "bundles/${{ env.VERSION }}"
+          rm -fr cloudnative-pg-catalog.yaml bundle.Dockerfile *.zip bundle/
+      -
+        name: Prepare commit message
+        env:
+          COMMIT_MESSAGE: |
+            operator cloudnative-pg (${{ env.VERSION }})
+        run: |
+          # Skip creating the commit if there are no changes
+          [ -n "$(git status -s)" ] || exit 0
+
+          git add bundles/${{ env.VERSION }}
+          git commit -sm "${COMMIT_MESSAGE}"
+      -
+        name: Push commit
+        uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1.0.0
+        with:
+          github_token: ${{ secrets.REPO_GHA_PAT }}
+          repository: cloudnative-pg/artifacts
+          branch: "main"

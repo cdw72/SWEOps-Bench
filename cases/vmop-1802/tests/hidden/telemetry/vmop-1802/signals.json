@@ -1,0 +1,29 @@
+{
+ "case": "vmop-1802",
+ "confirmed": [
+  {
+   "kind": "event_msg",
+   "target": "ReconciliationError: cannot update cluster with last applied spec",
+   "judge": "absent",
+   "values": {
+    "buggy": "cannot update cluster with last applied spec: VMAgent.operat",
+    "fixed": "(\u65e0)"
+   },
+   "note": "buggy annotation \u91cc last-applied spec \u53cd\u5e8f\u5217\u5316\u5931\u8d25,fixed \u65e0"
+  },
+  {
+   "kind": "pod_status",
+   "target": "vmagent-vmagent",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "/(\u65e0)",
+    "fixed": "2/2/Running"
+   },
+   "note": "buggy vmagent \u672a\u521b\u5efa,fixed 2/2 Running"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

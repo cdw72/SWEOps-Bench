@@ -1,0 +1,61 @@
+{
+  "case_id": "knop-1158",
+  "k8s_version": "v1.23",
+  "operator_bundle": "operator-1.6.0.yaml",
+  "operator_ready": [
+    "-n knative-eventing get deploy knative-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "knative-eventing",
+      "settle": 120
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "knative-eventing",
+      "settle": 300
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n knative-eventing get events -o jsonpath={.items[*].message}",
+      "failed to apply (cluster)rolebindings"
+    ],
+    [
+      "-n knative-eventing get events -o jsonpath={.items[*].message}",
+      "eventing-sources-rabbitmq"
+    ]
+  ],
+  "image_rewrites": [],
+  "pre_manifests": [
+    "metrics-server.yaml"
+  ],
+  "pre_ready": [
+    [
+      "get deploy -n kube-system metrics-server",
+      "1/1"
+    ],
+    [
+      "get apiservice v1beta1.metrics.k8s.io",
+      "True"
+    ]
+  ],
+  "ensure_ns": [
+    "knative-eventing"
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "knative-eventing",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 300
+}

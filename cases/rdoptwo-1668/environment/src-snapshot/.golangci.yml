@@ -1,0 +1,54 @@
+version: "2"
+run:
+  go: 1.23.4
+  tests: true
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - decorder
+    - dogsled
+    - durationcheck
+    - errname
+    - gochecknoinits
+    - goprintffuncname
+    - grouper
+    - importas
+    - makezero
+    - misspell
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - thelper
+    - tparallel
+    - unconvert
+    - wastedassign
+    - whitespace
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

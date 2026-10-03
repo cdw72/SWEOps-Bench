@@ -1,0 +1,21 @@
+# ★ 2026-09-21 收窄成"只有一个 StorageClass"(原文件是上游 local-path
+#   provisioner 的整套部署清单,见 SPECS_DRAFT_k8ssand-1023.py:113-132 的 RISK 注)。
+#   机理:那份清单带着与 k3s 内置**同名**的 ServiceAccount / ClusterRole /
+#   ClusterRoleBinding,subject 却改指 default ns 的 SA ⇒ apply 后 k3s addon
+#   控制器与它拉锯同一个 Binding,kube-system 内置 provisioner 失权时
+#   CrashLoopBackOff(20260921-041044 场 0/1、重启 10 次;对照场 021804 两个
+#   都 1/1)⇒ agent 在 k=0 如实报障被记假警报(acc 1.0 vs 0.5 掷硬币)。
+#   安全性:local-path-provisioner 按 provisioner 名认领 PVC,与类名无关,
+#   k3s 内置那套(kube-system)天然供这个类;cdc-1.yaml / testdata 引用的只是
+#   类名 server-storage。
+#   ★ 注释与对象同块、**不设前导 ---**:seed.apply_manifest 按 ^---$ 分块且
+#   保留非空块,前导注释会独自成块 ⇒ kubectl "no objects passed to apply"
+#   ⇒ SEED FAILED(probe1023 第一版实测)。
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  # Changing the name to server-storage is the only change we have made compared to upstream
+  name: server-storage
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

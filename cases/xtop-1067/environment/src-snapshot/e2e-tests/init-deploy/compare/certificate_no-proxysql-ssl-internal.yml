@@ -1,0 +1,20 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  generation: 1
+  name: no-proxysql-ssl-internal
+spec:
+  commonName: no-proxysql-pxc
+  dnsNames:
+    - no-proxysql-pxc
+    - '*.no-proxysql-pxc'
+    - no-proxysql-haproxy-replicas.namespace.svc.cluster.local
+    - no-proxysql-haproxy-replicas.namespace
+    - no-proxysql-haproxy-replicas
+    - no-proxysql-haproxy.namespace.svc.cluster.local
+    - no-proxysql-haproxy.namespace
+    - no-proxysql-haproxy
+  issuerRef:
+    kind: Issuer
+    name: no-proxysql-pxc-issuer
+  secretName: no-proxysql-ssl-internal

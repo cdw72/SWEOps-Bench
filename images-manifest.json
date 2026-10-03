@@ -1,0 +1,807 @@
+{
+ "cases/cnpgop-10665/environment/images/pgbouncer-1.25.1.tar": {
+  "orig": "ghcr.io/cloudnative-pg/pgbouncer:1.25.1",
+  "dh": "cdddddd/opsrca-cloudnative-pg-pgbouncer:1.25.1",
+  "sha256": "e574131d35100bc1495e901f87bdcb32315233ca5ca67f041ba9f4e4c16d0f6f"
+ },
+ "cases/cnpgop-10665/environment/images/postgresql-17.5.tar": {
+  "orig": "ghcr.io/cloudnative-pg/postgresql:17.5",
+  "dh": "cdddddd/opsrca-cloudnative-pg-postgresql:17.5",
+  "sha256": "268ed30e815a3886246535bea2ad2ac1f6ea81ce7c1cf854a0c5ebdfa443561f"
+ },
+ "cases/cnpgop-10665/environment/images/srcpinned-10665.tar": {
+  "orig": "ghcr.io/cloudnative-pg/cloudnative-pg:srcbuggy-10665",
+  "dh": "cdddddd/opsrca-cloudnative-pg-cloudnative-pg:srcbuggy-10665",
+  "sha256": "5731107f298acfba3a139cd21af8146b952ca79e615d204c8680334732c3f36d"
+ },
+ "cases/cnpgop-11005/environment/images/postgresql-17.5.tar": {
+  "orig": "ghcr.io/cloudnative-pg/postgresql:17.5",
+  "dh": "cdddddd/opsrca-cloudnative-pg-postgresql:17.5",
+  "sha256": "d5ae420769a28fff7ba28d9e0ef262662a6cc29824ae9c9bc6878902bd244385"
+ },
+ "cases/cnpgop-11005/environment/images/srcpinned-11042.tar": {
+  "orig": "ghcr.io/cloudnative-pg/cloudnative-pg:srcbuggy-11042",
+  "dh": "cdddddd/opsrca-cloudnative-pg-cloudnative-pg:srcbuggy-11042",
+  "sha256": "16a22debf003be07b9924edeac03134800dbae7de838ed391358d3c2114ec332"
+ },
+ "cases/cnpgop-11042/environment/images/postgresql-17.5.tar": {
+  "orig": "ghcr.io/cloudnative-pg/postgresql:17.5",
+  "dh": "cdddddd/opsrca-cloudnative-pg-postgresql:17.5",
+  "sha256": "bbf295dcb4c27f81f99865855afd47d524ab850877f4441c7c7533b4471e44ef"
+ },
+ "cases/cnpgop-11042/environment/images/srcpinned-11042.tar": {
+  "orig": "ghcr.io/cloudnative-pg/cloudnative-pg:srcbuggy-11042",
+  "dh": "cdddddd/opsrca-cloudnative-pg-cloudnative-pg:srcbuggy-11042",
+  "sha256": "0f772276609445a625f68f52c86d4f22a0200ff0d01c5a194544f20092f8db10"
+ },
+ "cases/cnpgop-9972/environment/images/busybox-latest.tar": {
+  "orig": "quay.io/prometheus/busybox:latest",
+  "dh": "cdddddd/opsrca-prometheus-busybox:latest",
+  "sha256": "a2d002427575ec6e05d28bdf478ff8cf1ee5ee715564ca3f44c686e7603d09ae"
+ },
+ "cases/cnpgop-9972/environment/images/postgresql-18.4.tar": {
+  "orig": "ghcr.io/cloudnative-pg/postgresql:18.4",
+  "dh": "cdddddd/opsrca-cloudnative-pg-postgresql:18.4",
+  "sha256": "2b180053bb19f405b83f07afb7d833083c0d7ed01ffef47a0cb247b2a26dd197"
+ },
+ "cases/cnpgop-9972/environment/images/srcpinned-9972.tar": {
+  "orig": "ghcr.io/cloudnative-pg/cloudnative-pg:srcbuggy-9972",
+  "dh": "cdddddd/opsrca-cloudnative-pg-cloudnative-pg:srcbuggy-9972",
+  "sha256": "492bf9c77392109533de8ec428205999e684627a0cc7b0b32b2a9b30b28b5b02"
+ },
+ "cases/grafanaop-2389/environment/images/srcpinned-2389.tar": {
+  "orig": "ghcr.io/grafana/grafana-operator:srcbuggy-2389",
+  "dh": "cdddddd/opsrca-grafana-grafana-operator:srcbuggy-2389",
+  "sha256": "9f32cb6a77eedaab91f10c0f9332b86c0559adc5d3927be0797afeeedfe6f058"
+ },
+ "cases/grafanaop-2864/environment/images/grafana-13.0.1.tar": {
+  "orig": "grafana/grafana:13.0.1",
+  "dh": "cdddddd/opsrca-grafana-grafana:13.0.1",
+  "sha256": "a263b4bb3e08f29aaf482fbb7f7d2679e98aacd34267219fd10538e4f3b264aa"
+ },
+ "cases/grafanaop-2864/environment/images/srcpinned-2864.tar": {
+  "orig": "ghcr.io/grafana/grafana-operator:srcbuggy-2864",
+  "dh": "cdddddd/opsrca-grafana-grafana-operator:srcbuggy-2864",
+  "sha256": "de1b373c1860fca24bf87fb26f406da836aa945106a75ba51c9569b8d6f4eeba"
+ },
+ "cases/k8spsmdb-1154/environment/images/percona-server-mongodb-7.0.8-5.tar": {
+  "orig": "percona/percona-server-mongodb:7.0.8-5",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb:7.0.8-5",
+  "sha256": "f2e7b429e74886dde4386f3d1c0c96dbea927d7e7715e36de1dc85340c395d9f"
+ },
+ "cases/k8spsmdb-1154/environment/images/srcpinned-1154.tar": {
+  "orig": "perconalab/percona-server-mongodb-operator:srcbuggy-1154",
+  "dh": "cdddddd/opsrca-perconalab-percona-server-mongodb-operator:srcbuggy-1154",
+  "sha256": "8baefefc789d59ea006191f77e5c3825809c50a3eacbc5986544fb6beb918dc5"
+ },
+ "cases/k8spsmdb-430/environment/images/percona-server-mongodb-4.4.3-5.tar": {
+  "orig": "percona/percona-server-mongodb:4.4.3-5",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb:4.4.3-5",
+  "sha256": "64466351057ed35d1419ef2da97a1d6ddc6b212e08d367a7ce52ae02e4eb813b"
+ },
+ "cases/k8spsmdb-430/environment/images/pinned434.tar": {
+  "orig": "percona/percona-server-mongodb-operator:1.7.0-buggy434",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb-operator:1.7.0-buggy434",
+  "sha256": "ffea77ef0188fd5b858d79241cf1e2853ae58dc3c035a164214ffdd55734677c"
+ },
+ "cases/k8spsmdb-430/environment/images/stale-proxy-n3.tar": {
+  "orig": "sweops/stale-proxy:n3",
+  "dh": "cdddddd/opsrca-sweops-stale-proxy:n3",
+  "sha256": "7822e7bea1553506214966110c956cd3127b7dcf3059eec4d05cf5c0ee7a7d15"
+ },
+ "cases/k8spsmdb-434/environment/images/percona-server-mongodb-4.4.3-5.tar": {
+  "orig": "percona/percona-server-mongodb:4.4.3-5",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb:4.4.3-5",
+  "sha256": "64466351057ed35d1419ef2da97a1d6ddc6b212e08d367a7ce52ae02e4eb813b"
+ },
+ "cases/k8spsmdb-434/environment/images/pinned434.tar": {
+  "orig": "percona/percona-server-mongodb-operator:1.7.0-buggy434",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb-operator:1.7.0-buggy434",
+  "sha256": "ffea77ef0188fd5b858d79241cf1e2853ae58dc3c035a164214ffdd55734677c"
+ },
+ "cases/k8spsmdb-578/environment/images/percona-server-mongodb-4.4.3-5.tar": {
+  "orig": "percona/percona-server-mongodb:4.4.3-5",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb:4.4.3-5",
+  "sha256": "a81351ce28e696ab4f00e552fd34e4ad06383c698fe3ffe2d1f8e2d9954f4087"
+ },
+ "cases/k8spsmdb-578/environment/images/pinned434.tar": {
+  "orig": "percona/percona-server-mongodb-operator:1.7.0-buggy434",
+  "dh": "cdddddd/opsrca-percona-percona-server-mongodb-operator:1.7.0-buggy434",
+  "sha256": "50a7576020f03642cf69bf9ff59abeca8258e519cd8fe8d281f0c702d0cbbb61"
+ },
+ "cases/k8ssand-1023/environment/images/busybox-1.32.0-uclibc.tar": {
+  "orig": "busybox:1.32.0-uclibc",
+  "dh": "cdddddd/opsrca-busybox:1.32.0-uclibc",
+  "sha256": "16de8550be99f2d04a42c0ac197b140dbcc48d565918818c785c211c7363decb"
+ },
+ "cases/k8ssand-1023/environment/images/cassandra-mgmtapi-3_11_7-v0.1.13.tar": {
+  "orig": "datastax/cassandra-mgmtapi-3_11_7:v0.1.13",
+  "dh": "cdddddd/opsrca-datastax-cassandra-mgmtapi-3_11_7:v0.1.13",
+  "sha256": "da41b410cf29a1ed06bc427b02b2f7de9c5791764fe30be18776896374dce424"
+ },
+ "cases/k8ssand-1023/environment/images/cass-config-builder-1.0.3.tar": {
+  "orig": "datastax/cass-config-builder:1.0.3",
+  "dh": "cdddddd/opsrca-datastax-cass-config-builder:1.0.3",
+  "sha256": "117afc9ff2840ba028eb735c22fe58018ff3af1e47fc70f6ce3008bb056074d5"
+ },
+ "cases/k8ssand-1023/environment/images/local-path-provisioner-0.0.12.tar": {
+  "orig": "rancher/local-path-provisioner:v0.0.12",
+  "dh": "cdddddd/opsrca-rancher-local-path-provisioner:v0.0.12",
+  "sha256": "fdc612e6cc7bbe41c538a6a6ab620f5cea74d02f03bb09c63c842c13d85255bf"
+ },
+ "cases/k8ssand-1023/environment/images/pinned1023.tar": {
+  "orig": "datastax/cass-operator:buggy1023",
+  "dh": "cdddddd/opsrca-datastax-cass-operator:buggy1023",
+  "sha256": "b37f9ba9d2a4f534f9af09401c8090502602fc1706102789e6d87c59d96229e2"
+ },
+ "cases/knop-1137/environment/images/activator-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/activator:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-activator:v1.6.0",
+  "sha256": "7be2d15ed2cf2bb6db4df9d143fcc3129764a73cc3ee44274d0371f6c0d268e5"
+ },
+ "cases/knop-1137/environment/images/autoscaler-hpa-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/autoscaler-hpa:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-autoscaler-hpa:v1.6.0",
+  "sha256": "bee82cc7905a44599d4af1f45ea5af5e2a236011d7af1e3dfc16394adc3d10f8"
+ },
+ "cases/knop-1137/environment/images/autoscaler-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/autoscaler:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-autoscaler:v1.6.0",
+  "sha256": "44ce27024311b8de42e5a7f77e1ebb2022655470440efd73df7ea3195a3650e1"
+ },
+ "cases/knop-1137/environment/images/controller-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/controller:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-controller:v1.6.0",
+  "sha256": "4196fc79a7b632cf5b481bb5031ea7a33632b45b729d63dfa4d7dfc92bffd1a7"
+ },
+ "cases/knop-1137/environment/images/domain-mapping-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/domain-mapping:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-domain-mapping:v1.6.0",
+  "sha256": "1845664b1df8c605c1e6010a5a7f2fef57ca894f372857ff84785077b4bda230"
+ },
+ "cases/knop-1137/environment/images/domain-mapping-webhook-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/domain-mapping-webhook:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-domain-mapping-webhook:v1.6.0",
+  "sha256": "631439b2be11b4d927aa4f206f336817084ec1f79fb9a2750d41ea4bdb1ff51d"
+ },
+ "cases/knop-1137/environment/images/envoy-v1.20-latest.tar": {
+  "orig": "envoyproxy/envoy:v1.20-latest",
+  "dh": "cdddddd/opsrca-envoyproxy-envoy:v1.20-latest",
+  "sha256": "b0ad4b74e912680adcbd7963245549a7191563c30a9c874f7a0359b673b93011"
+ },
+ "cases/knop-1137/environment/images/kourier-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/net-kourier/cmd/kourier:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-net-kourier-cmd-kourier:v1.6.0",
+  "sha256": "b51d8f6900b75ec33404792477be22c1cc692e6f8a1ee25475a7db05a23112ae"
+ },
+ "cases/knop-1137/environment/images/metrics-server-v0.6.4.tar": {
+  "orig": "registry.k8s.io/metrics-server/metrics-server:v0.6.4",
+  "dh": "cdddddd/opsrca-metrics-server-metrics-server:v0.6.4",
+  "sha256": "fb0ed29b13f88c59c7538dd4ba3f6074b663cfc29bc23f906d9090d4fea688e1"
+ },
+ "cases/knop-1137/environment/images/migrate-latest.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/pkg/apiextensions/storageversion/cmd/migrate:latest",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-pkg-apiextensions-storageversion-cmd-migrate:latest",
+  "sha256": "6beb356325208bf00bbd5733b751c5460e0fdd2efa49cfec21c92acfb1f18e10"
+ },
+ "cases/knop-1137/environment/images/srcpinned-1137.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/operator/cmd/operator:srcbuggy-1137",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-operator-cmd-operator:srcbuggy-1137",
+  "sha256": "e7744e0098da620f8e7bfeb65293068d64c0fa14bb2440ff9e61eb8f181f2766"
+ },
+ "cases/knop-1137/environment/images/webhook-v1.6.0.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/webhook:v1.6.0",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-webhook:v1.6.0",
+  "sha256": "5e1fb719512df6322fcca7a90c8b8380d083efd7e841e91a6c065cdaa111cafc"
+ },
+ "cases/knop-1158/environment/images/metrics-server-v0.6.4.tar": {
+  "orig": "registry.k8s.io/metrics-server/metrics-server:v0.6.4",
+  "dh": "cdddddd/opsrca-metrics-server-metrics-server:v0.6.4",
+  "sha256": "fb0ed29b13f88c59c7538dd4ba3f6074b663cfc29bc23f906d9090d4fea688e1"
+ },
+ "cases/knop-1158/environment/images/srcpinned-1137.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/operator/cmd/operator:srcbuggy-1137",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-operator-cmd-operator:srcbuggy-1137",
+  "sha256": "3fd2da662df59be6674b7d7b4a582ac0fab1e082215efe6cb2c94cb18aa2907e"
+ },
+ "cases/knop-2233/environment/images/activator-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/activator:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-activator:v1.21.1",
+  "sha256": "f325b889179d77c68a9a23349fb4a4fde27bbf416aaf5b4993498eee41d90475"
+ },
+ "cases/knop-2233/environment/images/autoscaler-hpa-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/autoscaler-hpa:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-autoscaler-hpa:v1.21.1",
+  "sha256": "e492f0327e2889a50aa31218f4719be547cc3e44bbdd505be93286e516a0fa9a"
+ },
+ "cases/knop-2233/environment/images/autoscaler-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/autoscaler:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-autoscaler:v1.21.1",
+  "sha256": "9a047e6eb59925475dc82c8ef3a29dcd9e711740f49bf81a1ac94d715e6da281"
+ },
+ "cases/knop-2233/environment/images/controller-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/controller:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-controller:v1.21.1",
+  "sha256": "3a4388d6187f3d2667dda918fddc4bf76ec74fa4856d23f881267034cc39de90"
+ },
+ "cases/knop-2233/environment/images/knative-cleanup-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/pkg/cleanup/cmd/cleanup:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-pkg-cleanup-cmd-cleanup:v1.21.1",
+  "sha256": "ed1481ac8e46cd703483f515bf92b21ee6761b1ba509715bf8ad213105b2b41b"
+ },
+ "cases/knop-2233/environment/images/knative-migrate-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/pkg/apiextensions/storageversion/cmd/migrate:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-pkg-apiextensions-storageversion-cmd-migrate:v1.21.1",
+  "sha256": "133bc3788c40c888ca49b486d04ce1c12ed2e8ec17be65a4cb216f02ae4c477c"
+ },
+ "cases/knop-2233/environment/images/metrics-server-v0.6.4.tar": {
+  "orig": "registry.k8s.io/metrics-server/metrics-server:v0.6.4",
+  "dh": "cdddddd/opsrca-metrics-server-metrics-server:v0.6.4",
+  "sha256": "fb0ed29b13f88c59c7538dd4ba3f6074b663cfc29bc23f906d9090d4fea688e1"
+ },
+ "cases/knop-2233/environment/images/queue-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/queue:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-queue:v1.21.1",
+  "sha256": "8be932a4bf005a2406b4dbb3c2542c133b19ffc3e0090156c7d4869bd902d7da"
+ },
+ "cases/knop-2233/environment/images/srcpinned-2233.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/operator/cmd/operator:srcbuggy-2233",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-operator-cmd-operator:srcbuggy-2233",
+  "sha256": "b7afa235aebd5ab316c410265d90eef159183b4ddcb1729d4a34a142811e62a3"
+ },
+ "cases/knop-2233/environment/images/webhook-v1.21.1.tar": {
+  "orig": "gcr.io/knative-releases/knative.dev/serving/cmd/webhook:v1.21.1",
+  "dh": "cdddddd/opsrca-knative-releases-knative.dev-serving-cmd-webhook:v1.21.1",
+  "sha256": "93dd490edabb77dfd806d7c1331a9ca13dd08f54c1a38d380b48140015ebf3a8"
+ },
+ "cases/logop-2172/environment/images/srcpinned-2172.tar": {
+  "orig": "ghcr.io/kube-logging/operator:srcbuggy-2172",
+  "dh": "cdddddd/opsrca-kube-logging-operator:srcbuggy-2172",
+  "sha256": "d909349fe10d98f623086354e7e515e0cd93cd318804bb965e54bc4fd8384058"
+ },
+ "cases/mgopone-1024/environment/images/mongo-4.4.0.tar": {
+  "orig": "mongo:4.4.0",
+  "dh": "cdddddd/opsrca-mongo:4.4.0",
+  "sha256": "5b7e508bfd02923c3774bf2f2dc4147c2377d331d4dd9defc21b5bde7c3d541d"
+ },
+ "cases/mgopone-1024/environment/images/mongodb-agent-11.12.0.7388-1.tar": {
+  "orig": "quay.io/mongodb/mongodb-agent:11.12.0.7388-1",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-agent:11.12.0.7388-1",
+  "sha256": "f284a353988823bd23504da886e2d961a4afb2e10df4ac83d0c560e84fc7c79b"
+ },
+ "cases/mgopone-1024/environment/images/mongodb-readinessprobe-1.0.9.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-readinessprobe:1.0.9",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-readinessprobe:1.0.9",
+  "sha256": "856604f8d8c37dc9067a4ded760c2c9dac752309eeebe27ce3687c170b952ead"
+ },
+ "cases/mgopone-1024/environment/images/mongodb-version-upgrade-hook-1.0.4.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "sha256": "5417a506cc764260c7c68d3d670a627101aad87a3f3b4fab8c3ffc4bfc050393"
+ },
+ "cases/mgopone-1024/environment/images/srcpinned-1024.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator:srcbuggy-1024",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator:srcbuggy-1024",
+  "sha256": "3cfbf52636e4845bffd9571cfc1eb59000b70129ecff7ff5e5f12eea463a3ccb"
+ },
+ "cases/mgopone-1054/environment/images/mongo-4.4.0.tar": {
+  "orig": "mongo:4.4.0",
+  "dh": "cdddddd/opsrca-mongo:4.4.0",
+  "sha256": "5b7e508bfd02923c3774bf2f2dc4147c2377d331d4dd9defc21b5bde7c3d541d"
+ },
+ "cases/mgopone-1054/environment/images/mongodb-agent-11.12.0.7388-1.tar": {
+  "orig": "quay.io/mongodb/mongodb-agent:11.12.0.7388-1",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-agent:11.12.0.7388-1",
+  "sha256": "f284a353988823bd23504da886e2d961a4afb2e10df4ac83d0c560e84fc7c79b"
+ },
+ "cases/mgopone-1054/environment/images/mongodb-readinessprobe-1.0.9.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-readinessprobe:1.0.9",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-readinessprobe:1.0.9",
+  "sha256": "856604f8d8c37dc9067a4ded760c2c9dac752309eeebe27ce3687c170b952ead"
+ },
+ "cases/mgopone-1054/environment/images/mongodb-version-upgrade-hook-1.0.4.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "sha256": "5417a506cc764260c7c68d3d670a627101aad87a3f3b4fab8c3ffc4bfc050393"
+ },
+ "cases/mgopone-1054/environment/images/srcpinned-1024.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator:srcbuggy-1024",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator:srcbuggy-1024",
+  "sha256": "3cfbf52636e4845bffd9571cfc1eb59000b70129ecff7ff5e5f12eea463a3ccb"
+ },
+ "cases/mgopone-1055/environment/images/mongo-4.4.0.tar": {
+  "orig": "mongo:4.4.0",
+  "dh": "cdddddd/opsrca-mongo:4.4.0",
+  "sha256": "5b7e508bfd02923c3774bf2f2dc4147c2377d331d4dd9defc21b5bde7c3d541d"
+ },
+ "cases/mgopone-1055/environment/images/mongodb-agent-11.12.0.7388-1.tar": {
+  "orig": "quay.io/mongodb/mongodb-agent:11.12.0.7388-1",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-agent:11.12.0.7388-1",
+  "sha256": "f284a353988823bd23504da886e2d961a4afb2e10df4ac83d0c560e84fc7c79b"
+ },
+ "cases/mgopone-1055/environment/images/mongodb-readinessprobe-1.0.9.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-readinessprobe:1.0.9",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-readinessprobe:1.0.9",
+  "sha256": "856604f8d8c37dc9067a4ded760c2c9dac752309eeebe27ce3687c170b952ead"
+ },
+ "cases/mgopone-1055/environment/images/mongodb-version-upgrade-hook-1.0.4.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "sha256": "5417a506cc764260c7c68d3d670a627101aad87a3f3b4fab8c3ffc4bfc050393"
+ },
+ "cases/mgopone-1055/environment/images/srcpinned-1024.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator:srcbuggy-1024",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator:srcbuggy-1024",
+  "sha256": "3cfbf52636e4845bffd9571cfc1eb59000b70129ecff7ff5e5f12eea463a3ccb"
+ },
+ "cases/mgopone-1072/environment/images/mongo-4.4.0.tar": {
+  "orig": "mongo:4.4.0",
+  "dh": "cdddddd/opsrca-mongo:4.4.0",
+  "sha256": "5b7e508bfd02923c3774bf2f2dc4147c2377d331d4dd9defc21b5bde7c3d541d"
+ },
+ "cases/mgopone-1072/environment/images/mongodb-agent-11.12.0.7388-1.tar": {
+  "orig": "quay.io/mongodb/mongodb-agent:11.12.0.7388-1",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-agent:11.12.0.7388-1",
+  "sha256": "f284a353988823bd23504da886e2d961a4afb2e10df4ac83d0c560e84fc7c79b"
+ },
+ "cases/mgopone-1072/environment/images/mongodb-readinessprobe-1.0.9.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-readinessprobe:1.0.9",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-readinessprobe:1.0.9",
+  "sha256": "856604f8d8c37dc9067a4ded760c2c9dac752309eeebe27ce3687c170b952ead"
+ },
+ "cases/mgopone-1072/environment/images/mongodb-version-upgrade-hook-1.0.4.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "sha256": "5417a506cc764260c7c68d3d670a627101aad87a3f3b4fab8c3ffc4bfc050393"
+ },
+ "cases/mgopone-1072/environment/images/srcpinned-1024.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator:srcbuggy-1024",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator:srcbuggy-1024",
+  "sha256": "3cfbf52636e4845bffd9571cfc1eb59000b70129ecff7ff5e5f12eea463a3ccb"
+ },
+ "cases/mgopone-1252/environment/images/mongo-4.4.0.tar": {
+  "orig": "mongo:4.4.0",
+  "dh": "cdddddd/opsrca-mongo:4.4.0",
+  "sha256": "5b7e508bfd02923c3774bf2f2dc4147c2377d331d4dd9defc21b5bde7c3d541d"
+ },
+ "cases/mgopone-1252/environment/images/mongodb-agent-11.12.0.7388-1.tar": {
+  "orig": "quay.io/mongodb/mongodb-agent:11.12.0.7388-1",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-agent:11.12.0.7388-1",
+  "sha256": "f284a353988823bd23504da886e2d961a4afb2e10df4ac83d0c560e84fc7c79b"
+ },
+ "cases/mgopone-1252/environment/images/mongodb-readinessprobe-1.0.9.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-readinessprobe:1.0.9",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-readinessprobe:1.0.9",
+  "sha256": "856604f8d8c37dc9067a4ded760c2c9dac752309eeebe27ce3687c170b952ead"
+ },
+ "cases/mgopone-1252/environment/images/mongodb-version-upgrade-hook-1.0.4.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator-version-upgrade-post-start-hook:1.0.4",
+  "sha256": "5417a506cc764260c7c68d3d670a627101aad87a3f3b4fab8c3ffc4bfc050393"
+ },
+ "cases/mgopone-1252/environment/images/srcpinned-1024.tar": {
+  "orig": "quay.io/mongodb/mongodb-kubernetes-operator:srcbuggy-1024",
+  "dh": "cdddddd/opsrca-mongodb-mongodb-kubernetes-operator:srcbuggy-1024",
+  "sha256": "3cfbf52636e4845bffd9571cfc1eb59000b70129ecff7ff5e5f12eea463a3ccb"
+ },
+ "cases/mgoptwo-897/environment/images/mgop-operator.tar": {
+  "orig": "tylergu1998/percona-server-mongodb-operator:test",
+  "dh": "cdddddd/opsrca-tylergu1998-percona-server-mongodb-operator:test",
+  "sha256": "c7bdf05841b29eaa196b5bb32a3e7bc4ac91f3aaa417221cb493623d7a72c9fa"
+ },
+ "cases/otelop-4848/environment/images/autoinstr-python.tar": {
+  "orig": "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:0.60b1",
+  "dh": "cdddddd/opsrca-open-telemetry-opentelemetry-operator-autoinstrumentation-python:0.60b1",
+  "sha256": "aa516aaf7a3d318ce1db5f5374bd82e042491cba0d4394fdb0dd249cfa777997"
+ },
+ "cases/otelop-4848/environment/images/busybox-1.36.tar": {
+  "orig": "busybox:1.36",
+  "dh": "cdddddd/opsrca-busybox:1.36",
+  "sha256": "23b2a4685c1606d1fefc73179c831b142a3dac6d1b663b44de33fce8b1a894ac"
+ },
+ "cases/otelop-4848/environment/images/cm-cainjector.tar": {
+  "orig": "quay.io/jetstack/cert-manager-cainjector:v1.14.7",
+  "dh": "cdddddd/opsrca-jetstack-cert-manager-cainjector:v1.14.7",
+  "sha256": "1a6383fce4c53ec81607b42b64ee56c087ad0a9dbea5cd54bce296b4490c2888"
+ },
+ "cases/otelop-4848/environment/images/cm-controller.tar": {
+  "orig": "quay.io/jetstack/cert-manager-controller:v1.14.7",
+  "dh": "cdddddd/opsrca-jetstack-cert-manager-controller:v1.14.7",
+  "sha256": "9161a91eb5295b4c789fb2cd085fe8964d04adc92b1e96b324e4386ef127516d"
+ },
+ "cases/otelop-4848/environment/images/cm-webhook.tar": {
+  "orig": "quay.io/jetstack/cert-manager-webhook:v1.14.7",
+  "dh": "cdddddd/opsrca-jetstack-cert-manager-webhook:v1.14.7",
+  "sha256": "73f5df338da6526281ca27ad8bdfdc9edc06cc7597c179d8be95f21c9320b145"
+ },
+ "cases/otelop-4848/environment/images/srcpinned-4848.tar": {
+  "orig": "ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:srcbuggy-4848",
+  "dh": "cdddddd/opsrca-open-telemetry-opentelemetry-operator-opentelemetry-operator:srcbuggy-4848",
+  "sha256": "b890bd1a3d2ca3f0c375ac6971b1b5e4eb12cebcd811846f534d268c8bb9383d"
+ },
+ "cases/otelop-5275/environment/images/cm-cainjector.tar": {
+  "orig": "quay.io/jetstack/cert-manager-cainjector:v1.14.7",
+  "dh": "cdddddd/opsrca-jetstack-cert-manager-cainjector:v1.14.7",
+  "sha256": "5581f4e164ebc0e5cc79767f28dd98ca0d9e81c1a970edde72b63dd51ea7f3eb"
+ },
+ "cases/otelop-5275/environment/images/cm-controller.tar": {
+  "orig": "quay.io/jetstack/cert-manager-controller:v1.14.7",
+  "dh": "cdddddd/opsrca-jetstack-cert-manager-controller:v1.14.7",
+  "sha256": "c119f7fbc9c8ffe4aaad44220aa87283ab6757602dc076b5dd2f7707988d340b"
+ },
+ "cases/otelop-5275/environment/images/cm-webhook.tar": {
+  "orig": "quay.io/jetstack/cert-manager-webhook:v1.14.7",
+  "dh": "cdddddd/opsrca-jetstack-cert-manager-webhook:v1.14.7",
+  "sha256": "8c3da3acd1b21ac8bf9d7c7dcf2f1be3bb0710653c459baae336028db0608d84"
+ },
+ "cases/otelop-5275/environment/images/srcpinned-5275.tar": {
+  "orig": "ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:srcbuggy-5275",
+  "dh": "cdddddd/opsrca-open-telemetry-opentelemetry-operator-opentelemetry-operator:srcbuggy-5275",
+  "sha256": "dddd9f5a34215237ac9cd1f84457766e5238be29884b424be72d691e2c49bcd5"
+ },
+ "cases/promop-8326/environment/images/config-reloader-v0.88.0.tar": {
+  "orig": "quay.io/prometheus-operator/prometheus-config-reloader:v0.88.0",
+  "dh": "cdddddd/opsrca-prometheus-operator-prometheus-config-reloader:v0.88.0",
+  "sha256": "db981cbd58c2b0361abda71e965a18832ef14007f5af830ee3faee50aec4c5ac"
+ },
+ "cases/promop-8326/environment/images/prometheus-v3.6.0.tar": {
+  "orig": "quay.io/prometheus/prometheus:v3.6.0",
+  "dh": "cdddddd/opsrca-prometheus-prometheus:v3.6.0",
+  "sha256": "3fd8837ff74a12378214162e9c87943330e7dcf10e999d410f11c9f179bb8a3f"
+ },
+ "cases/promop-8326/environment/images/srcpinned-8326.tar": {
+  "orig": "quay.io/prometheus-operator/prometheus-operator:srcbuggy-8326",
+  "dh": "cdddddd/opsrca-prometheus-operator-prometheus-operator:srcbuggy-8326",
+  "sha256": "6d504b26cbc1b35ce32de6f07305d8fda70e911b454291b493daf85fccde5503"
+ },
+ "cases/rbop-2218/environment/images/pinned648.tar": {
+  "orig": "rabbitmq/rabbitmq-operator:buggy648",
+  "dh": "cdddddd/opsrca-rabbitmq-rabbitmq-operator:buggy648",
+  "sha256": "986703e2052c5beb587cf8c799854b53209b1621df321ae5bc063ea943491d26"
+ },
+ "cases/rbop-2218/environment/images/rabbitmq-3.8.12-management.tar": {
+  "orig": "rabbitmq:3.8.12-management",
+  "dh": "cdddddd/opsrca-rabbitmq:3.8.12-management",
+  "sha256": "5f6c3c46b8de3679115b20d2b35a1edea9dcd0a63b6355a5164f84e611e7dc40"
+ },
+ "cases/rdoptwo-1540/environment/images/busybox-1.36.tar": {
+  "orig": "busybox:1.36",
+  "dh": "cdddddd/opsrca-busybox:1.36",
+  "sha256": "9f992802315bcb210bb7741c6818bb4108c44f1ec6a14a1538e90edf8fca4aa4"
+ },
+ "cases/rdoptwo-1540/environment/images/redis-7.0.15.tar": {
+  "orig": "quay.io/opstree/redis:v7.0.15",
+  "dh": "cdddddd/opsrca-opstree-redis:v7.0.15",
+  "sha256": "c105cb6cf9b0e242b4394aa6fa35c21266727db582703a14f0e653f9b79518b8"
+ },
+ "cases/rdoptwo-1540/environment/images/srcpinned-1704.tar": {
+  "orig": "quay.io/opstree/redis-operator:srcbuggy-1704",
+  "dh": "cdddddd/opsrca-opstree-redis-operator:srcbuggy-1704",
+  "sha256": "f64819808d2b60d774671d3d0da0cbceaa2a2244d064c829074ad0ecc5c9a647"
+ },
+ "cases/rdoptwo-286/environment/images/redis-7.0.15.tar": {
+  "orig": "quay.io/opstree/redis:v7.0.15",
+  "dh": "cdddddd/opsrca-opstree-redis:v7.0.15",
+  "sha256": "9526da0c6300253cfbb5a2bb09b68abfaa1ab95de37c2d61e319c6ff4c5ab6c8"
+ },
+ "cases/rdoptwo-286/environment/images/redis-exporter-1.0.tar": {
+  "orig": "quay.io/opstree/redis-exporter:1.0",
+  "dh": "cdddddd/opsrca-opstree-redis-exporter:1.0",
+  "sha256": "338f2fcb66b7f27ebffab4ab8bd9a03f35da4241ecdf64fe9ee6224abba510c3"
+ },
+ "cases/rdoptwo-286/environment/images/srcpinned-283.tar": {
+  "orig": "matt12313/redis-operator:srcbuggy-283",
+  "dh": "cdddddd/opsrca-matt12313-redis-operator:srcbuggy-283",
+  "sha256": "71db07e54c1e89e056d1ce3f5778a47fe4ed25013eec8d695bec298b0b26467d"
+ },
+ "cases/rdoptwo-290/environment/images/redis-7.0.15.tar": {
+  "orig": "quay.io/opstree/redis:v7.0.15",
+  "dh": "cdddddd/opsrca-opstree-redis:v7.0.15",
+  "sha256": "fdb79a803fb9229fb5130757d550b79a2fb00bba4acf470a9e00454f51cab320"
+ },
+ "cases/rdoptwo-290/environment/images/redis-exporter-1.0.tar": {
+  "orig": "quay.io/opstree/redis-exporter:1.0",
+  "dh": "cdddddd/opsrca-opstree-redis-exporter:1.0",
+  "sha256": "6113e4c6e8c6aee3b3f13b7bb1e64ff696f4272aa0139d9759ee5a6cd7621376"
+ },
+ "cases/rdoptwo-290/environment/images/srcpinned-280.tar": {
+  "orig": "matt12313/redis-operator:srcbuggy-280",
+  "dh": "cdddddd/opsrca-matt12313-redis-operator:srcbuggy-280",
+  "sha256": "d054b42ed5264455e6a2a61acd4a1f505e59a8827955c4e4f9f54de667ea84a6"
+ },
+ "cases/rdoptwo-480/environment/images/redis-7.0.15.tar": {
+  "orig": "quay.io/opstree/redis:v7.0.15",
+  "dh": "cdddddd/opsrca-opstree-redis:v7.0.15",
+  "sha256": "5fdcc12c8bd8bdfdf32f0f795246ba9c464caac4b095ef7f33b93d9f18d1b078"
+ },
+ "cases/rdoptwo-480/environment/images/redis-exporter-1.0.tar": {
+  "orig": "quay.io/opstree/redis-exporter:1.0",
+  "dh": "cdddddd/opsrca-opstree-redis-exporter:1.0",
+  "sha256": "a26c0144fd9852c4a333ff1b0f9d14fea2b1b06bd772215597afa3235b718e9c"
+ },
+ "cases/rdoptwo-480/environment/images/srcpinned-280.tar": {
+  "orig": "matt12313/redis-operator:srcbuggy-280",
+  "dh": "cdddddd/opsrca-matt12313-redis-operator:srcbuggy-280",
+  "sha256": "1e6a706d1ff8bc166b624bc20524621604c9f5bf891d7c585106c599929b2abb"
+ },
+ "cases/rook-17198/environment/images/busybox-1.36.tar": {
+  "orig": "busybox:1.36",
+  "dh": "cdddddd/opsrca-busybox:1.36",
+  "sha256": "abff1562c69a67998214d1dd3a389eb49104c803b13d9b2d059f9cf210fc0aca"
+ },
+ "cases/rook-17198/environment/images/ceph-v19.2.4.tar": {
+  "orig": "quay.io/ceph/ceph:v19.2.4",
+  "dh": "cdddddd/opsrca-ceph-ceph:v19.2.4",
+  "sha256": "e382960d540173ec5f5e60f81f3712fc72b4edb02bf920159864c6fff652c89e"
+ },
+ "cases/rook-17198/environment/images/rook-ceph-srcpinned-17198.tar": {
+  "orig": "rook/ceph:srcbuggy-17198",
+  "dh": "cdddddd/opsrca-rook-ceph:srcbuggy-17198",
+  "sha256": "b886d852cc965a39c7823dc463551da95dace4e70bc35316937b10cede24a1f4"
+ },
+ "cases/rook-17372/environment/images/busybox-1.36.tar": {
+  "orig": "busybox:1.36",
+  "dh": "cdddddd/opsrca-busybox:1.36",
+  "sha256": "23b2a4685c1606d1fefc73179c831b142a3dac6d1b663b44de33fce8b1a894ac"
+ },
+ "cases/rook-17372/environment/images/ceph-v19.2.4.tar": {
+  "orig": "quay.io/ceph/ceph:v19.2.4",
+  "dh": "cdddddd/opsrca-ceph-ceph:v19.2.4",
+  "sha256": "e382960d540173ec5f5e60f81f3712fc72b4edb02bf920159864c6fff652c89e"
+ },
+ "cases/rook-17372/environment/images/rook-ceph-srcpinned-17372.tar": {
+  "orig": "rook/ceph:srcbuggy-17372",
+  "dh": "cdddddd/opsrca-rook-ceph:srcbuggy-17372",
+  "sha256": "daba1784687934a8872e689377f63ac829f9b100cbf7385dd1803b2b1f3c3257"
+ },
+ "cases/sparkop-2807/environment/images/spark-stub-v1.tar": {
+  "orig": "sweops/spark-stub:v1",
+  "dh": "cdddddd/opsrca-sweops-spark-stub:v1",
+  "sha256": "416aaa07ad032bc3e2c2fc89a3bd1b1ee81ee58c9ab605932458bcdfd0b318f7"
+ },
+ "cases/sparkop-2807/environment/images/srcpinned-2807.tar": {
+  "orig": "ghcr.io/kubeflow/spark-operator/controller:srcbuggy-2807",
+  "dh": "cdddddd/opsrca-kubeflow-spark-operator-controller:srcbuggy-2807",
+  "sha256": "07827580b17e114b357cfdc6e592f78a114a59762a862e20f086b351c2e3f085"
+ },
+ "cases/sparkop-2832/environment/images/spark-3.5.0.tar": {
+  "orig": "apache/spark:3.5.0",
+  "dh": "cdddddd/opsrca-apache-spark:3.5.0",
+  "sha256": "9eefe9788dbe7eea4fb059ccba6f3a9974afbac9ccaaaf2bf2315b56130cc056"
+ },
+ "cases/sparkop-2832/environment/images/srcpinned-2807.tar": {
+  "orig": "ghcr.io/kubeflow/spark-operator/controller:srcbuggy-2807",
+  "dh": "cdddddd/opsrca-kubeflow-spark-operator-controller:srcbuggy-2807",
+  "sha256": "4d3ef9b0c67159e366f096fd005b3f51484bc7a743e1b9d3c4de3596e65a5d7f"
+ },
+ "cases/sparkop-2832/environment/images/vc-controller-manager-v1.9.0.tar": {
+  "orig": "volcanosh/vc-controller-manager:v1.9.0",
+  "dh": "cdddddd/opsrca-volcanosh-vc-controller-manager:v1.9.0",
+  "sha256": "304614dc85e70ec2335e7536ccc6959b937ecd609c8b9f3adf8c23b8b0f77f39"
+ },
+ "cases/sparkop-2832/environment/images/vc-scheduler-v1.9.0.tar": {
+  "orig": "volcanosh/vc-scheduler:v1.9.0",
+  "dh": "cdddddd/opsrca-volcanosh-vc-scheduler:v1.9.0",
+  "sha256": "27912791d72ff57ec6743e7e70e4e66cc055f4576e72e9f1dff015e349cdd042"
+ },
+ "cases/sparkop-2832/environment/images/vc-webhook-manager-v1.9.0.tar": {
+  "orig": "volcanosh/vc-webhook-manager:v1.9.0",
+  "dh": "cdddddd/opsrca-volcanosh-vc-webhook-manager:v1.9.0",
+  "sha256": "a6d82df0c563d4dc1326e6e5ae2f87c1ff130ecfeac70940d4cdbb694accb499"
+ },
+ "cases/vmop-1802/environment/images/config-reloader-sweops-68.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-68",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-68",
+  "sha256": "474e8946d41911a718ac7a6a5cf4798c88fa74e1bf1bb99a8b19abcbe3e08993"
+ },
+ "cases/vmop-1802/environment/images/srcpinned-vmop-1802.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-1802",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-1802",
+  "sha256": "5862f44d488bca95bbea86433d7f2be517dd4957922b3461d2c9bdcba610c05b"
+ },
+ "cases/vmop-1802/environment/images/vmagent-v1.129.0.tar": {
+  "orig": "victoriametrics/vmagent:v1.129.0",
+  "dh": "cdddddd/opsrca-victoriametrics-vmagent:v1.129.0",
+  "sha256": "81b70c297b8e14d2c13b91ce6173fb711062e43a15212ef7e4999cf1640315f8"
+ },
+ "cases/vmop-1828/environment/images/config-reloader-sweops-67.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-67",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-67",
+  "sha256": "dc5de8c9d46e5bfa0e3d0778b7b595182303e85190bc64aa09943c67572d9da7"
+ },
+ "cases/vmop-1828/environment/images/srcpinned-1828.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-1828",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-1828",
+  "sha256": "feb89444480f3ab5d894a0fd2ad9a051198207b8fd73bcda9ed1fe99a03ff0b2"
+ },
+ "cases/vmop-1828/environment/images/vmagent-v1.129.0.tar": {
+  "orig": "victoriametrics/vmagent:v1.129.0",
+  "dh": "cdddddd/opsrca-victoriametrics-vmagent:v1.129.0",
+  "sha256": "a6baf33445f8567ffd9f15fcc5da2204c1176827120a697aad9e4a20e3a0ff7b"
+ },
+ "cases/vmop-1845/environment/images/config-reloader-sweops-68.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-68",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-68",
+  "sha256": "2268282841b076b0383729bf09e67149f9d60def152a73560b904223e07517c8"
+ },
+ "cases/vmop-1845/environment/images/srcpinned-vmop-1845.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-1845",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-1845",
+  "sha256": "da8f3d7416befc2cf406962f72f4725cd68490d067a65524f1473e278aa06c01"
+ },
+ "cases/vmop-1845/environment/images/vminsert-v1.136.0-cluster.tar": {
+  "orig": "victoriametrics/vminsert:v1.136.0-cluster",
+  "dh": "cdddddd/opsrca-victoriametrics-vminsert:v1.136.0-cluster",
+  "sha256": "ee0d67552d87e21b051713604227c6a1e5ddd5b18edaec4902108f72d4e667ca"
+ },
+ "cases/vmop-1845/environment/images/vmselect-v1.136.0-cluster.tar": {
+  "orig": "victoriametrics/vmselect:v1.136.0-cluster",
+  "dh": "cdddddd/opsrca-victoriametrics-vmselect:v1.136.0-cluster",
+  "sha256": "3447741475286ea4e4ed9e331f3272291d0089a1a69545d4a967a064dc331fb5"
+ },
+ "cases/vmop-1845/environment/images/vmstorage-v1.136.0-cluster.tar": {
+  "orig": "victoriametrics/vmstorage:v1.136.0-cluster",
+  "dh": "cdddddd/opsrca-victoriametrics-vmstorage:v1.136.0-cluster",
+  "sha256": "ebf5d7125c03591d6c297767bfc13de027b6a6c1c19ca724592e0f0885e28e27"
+ },
+ "cases/vmop-2001/environment/images/config-reloader-sweops-66.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-66",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-66",
+  "sha256": "3eca05a77d89a23132819b661f9055cdfa2c2bddd64a23145b6bf403158c2c66"
+ },
+ "cases/vmop-2001/environment/images/srcpinned-2001.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-2001",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-2001",
+  "sha256": "3f13f1ac50a67c829b2a5d60f63dcc7f3971aa39e65400b2f1c25b6b5e021219"
+ },
+ "cases/vmop-2001/environment/images/vmagent-v1.129.0.tar": {
+  "orig": "victoriametrics/vmagent:v1.129.0",
+  "dh": "cdddddd/opsrca-victoriametrics-vmagent:v1.129.0",
+  "sha256": "3fffeca7a3fef4e6014a1787809b2c586ec87e448a91728f76551868aa006c1b"
+ },
+ "cases/vmop-2132/environment/images/config-reloader-sweops-69.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-69",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-69",
+  "sha256": "7d1571ba637696384fb20241680ddbe77510fe6704208fbcafedf94a337e11b7"
+ },
+ "cases/vmop-2132/environment/images/prom-alertmanager-v0.31.0.tar": {
+  "orig": "prom/alertmanager:v0.31.0",
+  "dh": "cdddddd/opsrca-prom-alertmanager:v0.31.0",
+  "sha256": "46151ace3b09c0e3b71cd5f691288f198bf1234d2a702d7170366da1cfab57e3"
+ },
+ "cases/vmop-2132/environment/images/srcpinned-2132.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-2132",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-2132",
+  "sha256": "1bdf7835bc606e0cee410ad5960bd2e877ff22bd8ecc2494fac3553abd3d2a1e"
+ },
+ "cases/vmop-2185/environment/images/config-reloader-sweops-69.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-69",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-69",
+  "sha256": "7d1571ba637696384fb20241680ddbe77510fe6704208fbcafedf94a337e11b7"
+ },
+ "cases/vmop-2185/environment/images/prom-alertmanager-v0.31.0.tar": {
+  "orig": "prom/alertmanager:v0.31.0",
+  "dh": "cdddddd/opsrca-prom-alertmanager:v0.31.0",
+  "sha256": "46151ace3b09c0e3b71cd5f691288f198bf1234d2a702d7170366da1cfab57e3"
+ },
+ "cases/vmop-2185/environment/images/srcpinned-2132.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-2132",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-2132",
+  "sha256": "1bdf7835bc606e0cee410ad5960bd2e877ff22bd8ecc2494fac3553abd3d2a1e"
+ },
+ "cases/vmop-2356/environment/images/config-reloader-sweops-72.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops-72",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops-72",
+  "sha256": "8f82b4b4d1a0df9a34e1fa31aceb90d7aa04e0c654a5c11f1263b9ebe9e12483"
+ },
+ "cases/vmop-2356/environment/images/srcpinned-2356.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-2356",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-2356",
+  "sha256": "7144f1d27f3355ab2e2e535747a4e091b37b78ed6bfc247275f845be1039ab6c"
+ },
+ "cases/vmop-2356/environment/images/vmanomaly-stub-v1.tar": {
+  "orig": "sweops/vmanomaly-stub:v1",
+  "dh": "cdddddd/opsrca-sweops-vmanomaly-stub:v1",
+  "sha256": "ff6ac69284e7a9aaafafc5e663499489392e03e8b697f208b0cb225d66e0d77c"
+ },
+ "cases/vmop-2384/environment/images/config-reloader-sweops.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops",
+  "sha256": "7f7903b71159a2d169fb299c60e10a30be177d889e1d96837ea25a34b45a73af"
+ },
+ "cases/vmop-2384/environment/images/srcpinned-2384.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-2384",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-2384",
+  "sha256": "ffabdd07ace80aa00c8e292872c1e82b63d96fd8c0270072b0d343bcad64072b"
+ },
+ "cases/vmop-2384/environment/images/victoria-metrics-v1.111.0.tar": {
+  "orig": "victoriametrics/victoria-metrics:v1.111.0",
+  "dh": "cdddddd/opsrca-victoriametrics-victoria-metrics:v1.111.0",
+  "sha256": "3f6cc59321993b19991b00ba2eb1259a3ce9c57548d0ca6540d1fcb662005271"
+ },
+ "cases/vmop-2388/environment/images/config-reloader-sweops.tar": {
+  "orig": "quay.io/victoriametrics/operator:config-reloader-sweops",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:config-reloader-sweops",
+  "sha256": "7f7903b71159a2d169fb299c60e10a30be177d889e1d96837ea25a34b45a73af"
+ },
+ "cases/vmop-2388/environment/images/srcpinned-2384.tar": {
+  "orig": "quay.io/victoriametrics/operator:srcbuggy-2384",
+  "dh": "cdddddd/opsrca-victoriametrics-operator:srcbuggy-2384",
+  "sha256": "ffabdd07ace80aa00c8e292872c1e82b63d96fd8c0270072b0d343bcad64072b"
+ },
+ "cases/vmop-2388/environment/images/vmalert-v1.111.0.tar": {
+  "orig": "victoriametrics/vmalert:v1.111.0",
+  "dh": "cdddddd/opsrca-victoriametrics-vmalert:v1.111.0",
+  "sha256": "33844aa179b3a223ab3a3c9767e3cd41d8b528745b79897bb74b8706b31f890c"
+ },
+ "cases/xtop-1060/environment/images/pxc-8.0.27.tar": {
+  "orig": "percona/percona-xtradb-cluster:8.0.27-18.1",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster:8.0.27-18.1",
+  "sha256": "584c6c6e2bbd33230b04db94c350d42b80330a53d50cf6b04b0444c0315273f8"
+ },
+ "cases/xtop-1060/environment/images/srcpinned-1060.tar": {
+  "orig": "percona/percona-xtradb-cluster-operator:srcbuggy-1060",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster-operator:srcbuggy-1060",
+  "sha256": "7eb40816cbf27e828633c0941f9446b42755bc7c2f75962760c64cf756274bd0"
+ },
+ "cases/xtop-1067/environment/images/pxc-8.0.27.tar": {
+  "orig": "percona/percona-xtradb-cluster:8.0.27-18.1",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster:8.0.27-18.1",
+  "sha256": "584c6c6e2bbd33230b04db94c350d42b80330a53d50cf6b04b0444c0315273f8"
+ },
+ "cases/xtop-1067/environment/images/srcpinned-1060.tar": {
+  "orig": "percona/percona-xtradb-cluster-operator:srcbuggy-1060",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster-operator:srcbuggy-1060",
+  "sha256": "7eb40816cbf27e828633c0941f9446b42755bc7c2f75962760c64cf756274bd0"
+ },
+ "cases/xtop-1155/environment/images/percona-xtradb-cluster-operator-1.11.0-haproxy.tar": {
+  "orig": "percona/percona-xtradb-cluster-operator:1.11.0-haproxy",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster-operator:1.11.0-haproxy",
+  "sha256": "b88b5e2766cd381f1a0d875be05c4046d9b974d8a51f4ebce0a39cf2b873aa83"
+ },
+ "cases/xtop-1155/environment/images/percona-xtradb-cluster-operator-1.11.0-logcollector.tar": {
+  "orig": "percona/percona-xtradb-cluster-operator:1.11.0-logcollector",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster-operator:1.11.0-logcollector",
+  "sha256": "022371a7acf6a4965a02b4cd9a4e73c203ee7dac2e45d4b4a16d80bf7ea9444e"
+ },
+ "cases/xtop-1155/environment/images/pxc-8.0.27.tar": {
+  "orig": "percona/percona-xtradb-cluster:8.0.27-18.1",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster:8.0.27-18.1",
+  "sha256": "584c6c6e2bbd33230b04db94c350d42b80330a53d50cf6b04b0444c0315273f8"
+ },
+ "cases/xtop-1155/environment/images/srcpinned-1060.tar": {
+  "orig": "percona/percona-xtradb-cluster-operator:srcbuggy-1060",
+  "dh": "cdddddd/opsrca-percona-percona-xtradb-cluster-operator:srcbuggy-1060",
+  "sha256": "7eb40816cbf27e828633c0941f9446b42755bc7c2f75962760c64cf756274bd0"
+ },
+ "cases/zkop-312/environment/images/pinned312.tar": {
+  "orig": "pravega/zookeeper-operator:buggy312",
+  "dh": "cdddddd/opsrca-pravega-zookeeper-operator:buggy312",
+  "sha256": "38739d07391117ad5f5cf078ff76377a9e24730e8298dbd3a567f785e45a249e"
+ },
+ "cases/zkop-312/environment/images/stale-proxy-n3.tar": {
+  "orig": "sweops/stale-proxy:n3",
+  "dh": "cdddddd/opsrca-sweops-stale-proxy:n3",
+  "sha256": "7aae993a193b0afd87f2219aa144396a50a2afd0e5237b0c16f3421b966087be"
+ },
+ "cases/zkop-312/environment/images/zookeeper-0.2.14.tar": {
+  "orig": "pravega/zookeeper:0.2.14",
+  "dh": "cdddddd/opsrca-pravega-zookeeper:0.2.14",
+  "sha256": "de0ee06b89c17a5b20a7fddf740388641e75800c4dae1ac9ae884d160a903bda"
+ },
+ "cases/zkop-314/environment/images/pinned312.tar": {
+  "orig": "pravega/zookeeper-operator:buggy312",
+  "dh": "cdddddd/opsrca-pravega-zookeeper-operator:buggy312",
+  "sha256": "38739d07391117ad5f5cf078ff76377a9e24730e8298dbd3a567f785e45a249e"
+ },
+ "cases/zkop-314/environment/images/stale-proxy-n3.tar": {
+  "orig": "sweops/stale-proxy:n3",
+  "dh": "cdddddd/opsrca-sweops-stale-proxy:n3",
+  "sha256": "7822e7bea1553506214966110c956cd3127b7dcf3059eec4d05cf5c0ee7a7d15"
+ },
+ "cases/zkop-314/environment/images/zookeeper-0.2.14.tar": {
+  "orig": "pravega/zookeeper:0.2.14",
+  "dh": "cdddddd/opsrca-pravega-zookeeper:0.2.14",
+  "sha256": "de0ee06b89c17a5b20a7fddf740388641e75800c4dae1ac9ae884d160a903bda"
+ }
+}

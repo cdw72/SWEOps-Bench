@@ -1,0 +1,446 @@
+package controllers
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/grafana/grafana-openapi-client-go/client/provisioning"
+	"github.com/grafana/grafana-openapi-client-go/models"
+	"github.com/grafana/grafana-operator/v5/api/v1beta1"
+	grafanaclient "github.com/grafana/grafana-operator/v5/controllers/client"
+	"github.com/grafana/grafana-operator/v5/pkg/tk8s"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	. "github.com/onsi/ginkgo/v2"
+)
+
+var _ = Describe("AlertRulegroup Reconciler: Provoke Conditions", func() {
+	noDataState := "NoData"
+	durationString := "60s"
+	dayDuration := "1d"
+	weekDuration := "1w"
+	rules := []v1beta1.AlertRule{
+		{
+			Title:        "TestRule",
+			UID:          "akdj-wonvo",
+			ExecErrState: "KeepLast",
+			NoDataState:  &noDataState,
+			Data:         []*v1beta1.AlertQuery{},
+		},
+	}
+
+	tests := []struct {
+		name    string
+		meta    metav1.ObjectMeta
+		spec    v1beta1.GrafanaAlertRuleGroupSpec
+		want    metav1.Condition
+		wantErr string
+	}{
+		{
+			name: ".spec.suspend=true",
+			meta: objectMetaSuspended,
+			spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecSuspended,
+				FolderUID:         "GroupUID",
+				Rules:             rules,
+			},
+			want: metav1.Condition{
+				Type:   conditionSuspended,
+				Reason: conditionReasonApplySuspended,
+			},
+		},
+		{
+			name: "GetScopedMatchingInstances returns empty list",
+			meta: objectMetaNoMatchingInstances,
+			spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecNoMatchingInstances,
+				FolderUID:         "GroupUID",
+				Rules:             rules,
+			},
+			want: metav1.Condition{
+				Type:   conditionNoMatchingInstance,
+				Reason: conditionReasonEmptyAPIReply,
+			},
+			wantErr: ErrNoMatchingInstances.Error(),
+		},
+		{
+			name: "Failed to apply to instance",
+			meta: objectMetaApplyFailed,
+			spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecApplyFailed,
+				FolderRef:         "pre-existing",
+				Rules:             rules,
+			},
+			want: metav1.Condition{
+				Type:   conditionAlertGroupSynchronized,
+				Reason: conditionReasonApplyFailed,
+			},
+			wantErr: LogMsgApplyErrors,
+		},
+		{
+			name: "Successfully applied resource to instance",
+			meta: objectMetaSynchronized,
+			spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecSynchronized,
+				FolderRef:         "pre-existing",
+				Interval:          metav1.Duration{Duration: 60 * time.Second},
+				Rules: []v1beta1.AlertRule{
+					{
+						Title:     "MathRule",
+						UID:       "oefiodwa-dam-dwa",
+						Condition: "A",
+						Data: []*v1beta1.AlertQuery{
+							{
+								RefID:             "A",
+								RelativeTimeRange: nil,
+								DatasourceUID:     "__expr__",
+								Model: &apiextensionsv1.JSON{Raw: []byte(`{
+		                                "conditions": [
+		                                    {
+		                                        "evaluator": {
+		                                            "params": [
+		                                                0,
+		                                                0
+		                                            ],
+		                                            "type": "gt"
+		                                        },
+		                                        "operator": {
+		                                            "type": "and"
+		                                        },
+		                                        "query": {
+		                                            "params": []
+		                                        },
+		                                        "reducer": {
+		                                            "params": [],
+		                                            "type": "avg"
+		                                        },
+		                                        "type": "query"
+		                                    }
+		                                ],
+		                                "datasource": {
+		                                    "name": "Expression",
+		                                    "type": "__expr__",
+		                                    "uid": "__expr__"
+		                                },
+		                                "expression": "1 > 0",
+		                                "hide": false,
+		                                "intervalMs": 1000,
+		                                "maxDataPoints": 100,
+		                                "refId": "B",
+		                                "type": "math"
+		                            }`)},
+							},
+						},
+						NoDataState:  &noDataState,
+						ExecErrState: "Error",
+						For:          &durationString,
+						Annotations:  map[string]string{},
+						Labels:       map[string]string{},
+						IsPaused:     true,
+					},
+				},
+			},
+			want: metav1.Condition{
+				Type:   conditionAlertGroupSynchronized,
+				Reason: conditionReasonApplySuccessful,
+			},
+		},
+		{
+			name: "Duration conversion with day duration",
+			meta: objectMetaSynchronized,
+			spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecSynchronized,
+				FolderRef:         "pre-existing",
+				Interval:          metav1.Duration{Duration: 60 * time.Second},
+				Rules: []v1beta1.AlertRule{
+					{
+						Title:     "DayDurationRule",
+						UID:       "day-duration-rule",
+						Condition: "A",
+						Data: []*v1beta1.AlertQuery{
+							{
+								RefID:         "A",
+								DatasourceUID: "__expr__",
+								Model:         &apiextensionsv1.JSON{Raw: []byte(`{"expression": "1", "refId": "A"}`)},
+							},
+						},
+						NoDataState:  &noDataState,
+						ExecErrState: "Error",
+						For:          &dayDuration, // 1d
+						Annotations:  map[string]string{},
+						Labels:       map[string]string{},
+						IsPaused:     false,
+					},
+				},
+			},
+			want: metav1.Condition{
+				Type:   conditionAlertGroupSynchronized,
+				Reason: conditionReasonApplySuccessful,
+			},
+		},
+		{
+			name: "Duration conversion with week duration",
+			meta: objectMetaSynchronized,
+			spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecSynchronized,
+				FolderRef:         "pre-existing",
+				Interval:          metav1.Duration{Duration: 60 * time.Second},
+				Rules: []v1beta1.AlertRule{
+					{
+						Title:     "WeekDurationRule",
+						UID:       "week-duration-rule",
+						Condition: "A",
+						Data: []*v1beta1.AlertQuery{
+							{
+								RefID:         "A",
+								DatasourceUID: "__expr__",
+								Model:         &apiextensionsv1.JSON{Raw: []byte(`{"expression": "1", "refId": "A"}`)},
+							},
+						},
+						NoDataState:  &noDataState,
+						ExecErrState: "Error",
+						For:          &weekDuration, // 1w
+						Annotations:  map[string]string{},
+						Labels:       map[string]string{},
+						IsPaused:     false,
+					},
+				},
+			},
+			want: metav1.Condition{
+				Type:   conditionAlertGroupSynchronized,
+				Reason: conditionReasonApplySuccessful,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		It(tt.name, func() {
+			cr := &v1beta1.GrafanaAlertRuleGroup{
+				ObjectMeta: tt.meta,
+				Spec:       tt.spec,
+			}
+
+			r := &GrafanaAlertRuleGroupReconciler{Client: cl, Scheme: cl.Scheme()}
+
+			reconcileAndValidateCondition(r, cr, tt.want, tt.wantErr)
+		})
+	}
+})
+
+var _ = Describe("AlertRulegroup Reconciler: folder fallback diagnostics", func() {
+	t := GinkgoT()
+
+	It("sets a clear condition when folderRef points to a title-fallback folder", func() {
+		const (
+			folderName = "legacy-fallback-folder-alertgroup"
+			remoteUID  = "legacy-fallback-uid-alertgroup"
+		)
+
+		gClient, err := grafanaclient.NewGeneratedGrafanaClient(testCtx, cl, externalGrafanaCr)
+		require.NoError(t, err)
+
+		_, err = gClient.Folders.CreateFolder(&models.CreateFolderCommand{ //nolint:errcheck
+			Title: folderName,
+			UID:   remoteUID,
+		})
+		require.NoError(t, err)
+
+		folder := &v1beta1.GrafanaFolder{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      folderName,
+			},
+			Spec: v1beta1.GrafanaFolderSpec{
+				GrafanaCommonSpec: commonSpecSynchronized,
+			},
+		}
+
+		folderReq := tk8s.GetRequest(t, folder)
+		folderReconciler := &GrafanaFolderReconciler{Client: cl, Scheme: cl.Scheme()}
+
+		err = cl.Create(testCtx, folder)
+		require.NoError(t, err)
+
+		_, err = folderReconciler.Reconcile(testCtx, folderReq)
+		require.NoError(t, err)
+
+		err = cl.Get(testCtx, folderReq.NamespacedName, folder)
+		require.NoError(t, err)
+		require.NotEqual(t, remoteUID, folder.GetGrafanaUID())
+		assert.True(t, tk8s.HasCondition(t, folder, metav1.Condition{
+			Type:   conditionFolderUIDMismatch,
+			Reason: conditionReasonFolderUIDInferred,
+		}))
+
+		alertRuleGroup := &v1beta1.GrafanaAlertRuleGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      "legacy-fallback-group",
+			},
+			Spec: v1beta1.GrafanaAlertRuleGroupSpec{
+				GrafanaCommonSpec: commonSpecSynchronized,
+				FolderRef:         folder.Name,
+				Interval:          metav1.Duration{Duration: 60 * time.Second},
+				Rules: []v1beta1.AlertRule{
+					{
+						Title:     "LegacyFallbackRule",
+						UID:       "legacy-fallback-rule",
+						Condition: "A",
+						Data: []*v1beta1.AlertQuery{
+							{
+								RefID:         "A",
+								DatasourceUID: "__expr__",
+								Model:         &apiextensionsv1.JSON{Raw: []byte(`{"expression": "1", "refId": "A"}`)},
+							},
+						},
+						ExecErrState: "Error",
+						NoDataState:  new("NoData"),
+					},
+				},
+			},
+		}
+
+		alertReq := tk8s.GetRequest(t, alertRuleGroup)
+		alertReconciler := &GrafanaAlertRuleGroupReconciler{Client: cl, Scheme: cl.Scheme()}
+
+		err = cl.Create(testCtx, alertRuleGroup)
+		require.NoError(t, err)
+
+		_, err = alertReconciler.Reconcile(testCtx, alertReq)
+		require.ErrorContains(t, err, "UID was inferred")
+
+		err = cl.Get(testCtx, alertReq.NamespacedName, alertRuleGroup)
+		require.NoError(t, err)
+
+		hasCondition := tk8s.HasCondition(t, alertRuleGroup, metav1.Condition{
+			Type:   conditionNoMatchingFolder,
+			Reason: conditionReasonFolderUIDInferred,
+		})
+		assert.True(t, hasCondition)
+	})
+})
+
+var _ = Describe("AlertRuleGroup Controller Conversion", func() {
+	t := GinkgoT()
+
+	Context("Duration conversion in crToModel", func() {
+		It("Should properly convert duration with day duration", func() {
+			dayDuration := "1d"
+
+			alertRule := v1beta1.AlertRule{
+				Title:        "TestRule",
+				UID:          "test-uid",
+				ExecErrState: "KeepLast",
+				For:          &dayDuration,
+				Data:         []*v1beta1.AlertQuery{},
+			}
+
+			arg := &v1beta1.GrafanaAlertRuleGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-group",
+					Namespace: "default",
+				},
+				Spec: v1beta1.GrafanaAlertRuleGroupSpec{
+					Name:      "test-group",
+					FolderUID: "test-folder",
+					Interval:  metav1.Duration{Duration: 60 * time.Second},
+					Rules:     []v1beta1.AlertRule{alertRule},
+				},
+			}
+
+			model, err := crToModel(arg, "test-folder")
+			require.NoError(t, err)
+
+			assert.Len(t, model.Rules, 1)
+			assert.NotNil(t, model.Rules[0].For)
+			assert.Equal(t, "24h0m0s", model.Rules[0].For.String())
+		})
+
+		It("Should properly convert duration with week duration", func() {
+			weekDuration := "1w"
+
+			alertRule := v1beta1.AlertRule{
+				Title:        "TestRule",
+				UID:          "test-uid",
+				ExecErrState: "KeepLast",
+				For:          &weekDuration,
+				Data:         []*v1beta1.AlertQuery{},
+			}
+
+			arg := &v1beta1.GrafanaAlertRuleGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-group",
+					Namespace: "default",
+				},
+				Spec: v1beta1.GrafanaAlertRuleGroupSpec{
+					Name:      "test-group",
+					FolderUID: "test-folder",
+					Interval:  metav1.Duration{Duration: 60 * time.Second},
+					Rules:     []v1beta1.AlertRule{alertRule},
+				},
+			}
+
+			model, err := crToModel(arg, "test-folder")
+			require.NoError(t, err)
+
+			assert.Len(t, model.Rules, 1)
+			assert.NotNil(t, model.Rules[0].For)
+			assert.Equal(t, "168h0m0s", model.Rules[0].For.String())
+		})
+	})
+})
+
+func TestGrafanaAlertRuleGroupMatchesStateInGrafanaNormalizesEquivalentQueryModels(t *testing.T) {
+	noDataState := "NoData"
+	durationString := "60s"
+
+	cr := &v1beta1.GrafanaAlertRuleGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-group",
+			Namespace: "default",
+		},
+		Spec: v1beta1.GrafanaAlertRuleGroupSpec{
+			Name:      "test-group",
+			FolderUID: "test-folder",
+			Interval:  metav1.Duration{Duration: 60 * time.Second},
+			Rules: []v1beta1.AlertRule{
+				{
+					Title:        "TestRule",
+					UID:          "test-uid",
+					Condition:    "A",
+					ExecErrState: "Error",
+					NoDataState:  &noDataState,
+					For:          &durationString,
+					Data: []*v1beta1.AlertQuery{
+						{
+							RefID:         "A",
+							DatasourceUID: "__expr__",
+							Model: &apiextensionsv1.JSON{
+								Raw: []byte(`{"expression":"1 > 0","refId":"A","type":"math"}`),
+							},
+							RelativeTimeRange: &models.RelativeTimeRange{From: 0, To: 0},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	model, err := crToModel(cr, "test-folder")
+	require.NoError(t, err)
+
+	remotePayloadBytes, err := json.Marshal(model)
+	require.NoError(t, err)
+
+	var remoteModel models.AlertRuleGroup
+	require.NoError(t, json.Unmarshal(remotePayloadBytes, &remoteModel))
+
+	reconciler := &GrafanaAlertRuleGroupReconciler{}
+	assert.True(t, reconciler.matchesStateInGrafana(true, &model, &provisioning.GetAlertRuleGroupOK{
+		Payload: &remoteModel,
+	}))
+}

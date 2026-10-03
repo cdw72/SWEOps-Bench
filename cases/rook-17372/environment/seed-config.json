@@ -1,0 +1,55 @@
+{
+  "case_id": "rook-17372",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n rook-ceph get deploy rook-ceph-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n rook-ceph get deploy rook-ceph-operator -o jsonpath={.spec.template.spec.containers[0].image}",
+      "docker.io/rook/ceph:srcbuggy-17372"
+    ]
+  ],
+  "fault_verify_after": [
+    [
+      "-n rook-ceph get configmap rook-17372-scene-state -o jsonpath={.data.scene}",
+      "ok"
+    ],
+    [
+      "-n rook-ceph get configmap rook-17372-scene-state -o jsonpath={.data.ceph}",
+      "Ready"
+    ],
+    [
+      "-n rook-ceph get configmap rook-17372-scene-state -o jsonpath={.data.wanted_injected}",
+      "1"
+    ],
+    [
+      "-n rook-ceph get configmap rook-17372-scene-state -o jsonpath={.data.wanted}",
+      "1"
+    ],
+    [
+      "-n rook-ceph get configmap rook-17372-scene-state -o jsonpath={.data.fault}",
+      "present"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "rook-ceph"
+  ],
+  "trigger_script": "rook-17372-scene.sh",
+  "apply_ns": "rook-ceph",
+  "trigger_timeout": 1800,
+  "wait_nodes": 3,
+  "ctr_sockets": [
+    "/run/k3s/containerd/containerd.sock",
+    "/run/k3s/ctr-w1/containerd.sock",
+    "/run/k3s/ctr-w2/containerd.sock"
+  ],
+  "pre_scene": true,
+  "pre_scene_timeout": 1800
+}

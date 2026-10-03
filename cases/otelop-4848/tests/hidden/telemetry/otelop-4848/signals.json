@@ -1,0 +1,29 @@
+{
+ "case": "otelop-4848",
+ "confirmed": [
+  {
+   "kind": "event_msg",
+   "target": "FailedCreate: violates PodSecurity \"restricted:latest\"",
+   "judge": "absent",
+   "values": {
+    "buggy": "violates PodSecurity \"restricted:latest\": allowPrivilegeEscalation != false",
+    "fixed": "(\u65e0)"
+   },
+   "note": "PSS \u62d2\u6ce8\u5165\u5bb9\u5668\u4e8b\u4ef6;\u4e8b\u4ef6\u6d88\u5931=\u4fee\u597d"
+  },
+  {
+   "kind": "pod_status",
+   "target": "app",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "/(\u65e0)",
+    "fixed": "1/1/Running"
+   },
+   "note": "buggy app pod \u5efa\u4e0d\u51fa\u6765,fixed 1/1 Running"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

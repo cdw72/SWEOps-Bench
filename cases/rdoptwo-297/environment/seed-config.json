@@ -1,0 +1,53 @@
+{
+  "case_id": "rdoptwo-297",
+  "ensure_ns": [
+    "redis-operator"
+  ],
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_f1c547e.yaml",
+  "operator_ready": [
+    "-n redis-operator get deploy redis-operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "redis-operator",
+      "wait": [
+        [
+          "get sts",
+          "test-cluster-leader"
+        ],
+        [
+          "get pods",
+          "Running"
+        ]
+      ],
+      "timeout": 420
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "redis-operator",
+      "settle": 45
+    }
+  ],
+  "settle_sec": 60,
+  "image_rewrites": [
+    [
+      "matt12313/redis-operator:srcfix-297",
+      "matt12313/redis-operator:v0.10.0"
+    ]
+  ],
+  "operator_ns": "default",
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "redis-operator",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 45
+}

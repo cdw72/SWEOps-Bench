@@ -1,0 +1,79 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "cnpg-system",
+    "get",
+    "deploy",
+    "cnpg-controller-manager"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/manager",
+   "./cmd/manager"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/manager",
+    "/manager"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "cnpg-system/cnpg-controller-manager"
+ },
+ "settle": 120,
+ "slug": "cnpgop-9972",
+ "rearm": [
+  [
+   "-n",
+   "default",
+   "delete",
+   "job",
+   "c-1-initdb",
+   "--ignore-not-found",
+   "--timeout=60s"
+  ],
+  [
+   "-n",
+   "default",
+   "delete",
+   "pod",
+   "c-1",
+   "--ignore-not-found",
+   "--grace-period=0"
+  ],
+  [
+   "-n",
+   "default",
+   "delete",
+   "pvc",
+   "c-1",
+   "--ignore-not-found",
+   "--timeout=120s"
+  ],
+  [
+   "-n",
+   "default",
+   "patch",
+   "cluster",
+   "c",
+   "--subresource=status",
+   "--type=merge",
+   "-p",
+   "{\"status\":{\"instances\":0,\"latestGeneratedNode\":0}}"
+  ]
+ ],
+ "rearm_settle": 90
+}

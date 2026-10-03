@@ -1,0 +1,19 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster
+  namespace: default
+spec:
+  instances: 1
+  # 2026-09-06 触发重设计:nonexistent 镜像的 initdb pod 停在
+  # ImagePullBackOff(phase=Pending),Job 控制器不把 Pending pod 计为失败
+  # -> BackoffLimitExceeded 永不到来 -> fix(#11035)的 unrecoverable 转换
+  # 永不触发,两边同态(ns231 实证:1800s 窗口内 job 从未 Failed)。
+  # 改为镜像可拉(CNPGOP_PG_IMAGE)+ initdb 非法 option:initdb 进程
+  # exit!=0 -> pod Failed -> Job 重试至 BackoffLimitExceeded(分钟级),
+  # 修复链两端都能到达各自终态。
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+  bootstrap:
+    initdb:
+  storage:
+    size: 1Gi

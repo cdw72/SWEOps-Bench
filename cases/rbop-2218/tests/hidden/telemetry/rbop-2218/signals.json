@@ -1,0 +1,19 @@
+{
+ "case": "rbop-2218",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "sts_selector_invalid",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 30,
+    "fixed": 0
+   },
+   "note": "sts invalid \u5faa\u73af\u4e32(\u8f85\u8bc1 operator failed \u884c b=11/f=0)"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

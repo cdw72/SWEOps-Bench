@@ -1,0 +1,273 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'customManagers:dockerfileVersions',
+    'docker:pinDigests',
+    'helpers:pinGitHubActionDigests',
+  ],
+  rebaseWhen: 'never',
+  prConcurrentLimit: 5,
+  baseBranchPatterns: [
+    'main',
+    'release-1.25',
+    'release-1.27',
+    'release-1.28',
+  ],
+  ignorePaths: [
+    'docs/**',
+    'releases/**',
+    'contribute/**',
+    'licenses/**',
+    'pkg/versions/**',
+  ],
+  postUpdateOptions: [
+    'gomodTidy',
+  ],
+  semanticCommits: 'enabled',
+  labels: [
+    'automated',
+    'do not backport',
+    'no-issue',
+  ],
+  'pip-compile': {
+    managerFilePatterns: [
+      '/(^|/)workflow-requirements\\.txt$/',
+    ],
+  },
+  pip_requirements: {
+    enabled: false,
+  },
+  pip_setup: {
+    enabled: false,
+  },
+  customManagers: [
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^Makefile$/',
+        '/^hack/setup-cluster.sh$/',
+        '/^hack/testing-tools/k8s-engines/[^/]+/settings\\.sh$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\s+[A-Za-z0-9_]+?_VERSION\\s*\\??=\\s*["\']?(?<currentValue>.+?)["\']?\\s',
+      ],
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^\\.github\\/workflows\\/[^/]+\\.ya?ml$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\s+[A-Za-z0-9_]+?_VERSION\\s*: \\s*["\']?(?<currentValue>.+?)["\']?\\s',
+      ],
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^docker-bake\\.hcl$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z-.]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\s+[A-Za-z0-9_]+?\\s*=\\s*["\']?(?<depName>[^:@]+):(?<currentValue>[a-z0-9.-]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?["\']?,?\\s',
+      ],
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^config\\/olm-scorecard\\/patches\\/basic\\.config\\.yaml$/',
+        '/^config\\/olm-scorecard\\/patches\\/olm\\.config\\.yaml$/',
+      ],
+      matchStrings: [
+        'image: quay.io/operator-framework/scorecard-test:(?<currentValue>.*?)\\n',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'loose',
+      depNameTemplate: 'quay.io/operator-framework/scorecard-test',
+      extractVersionTemplate: '^(?<version>v\\d+\\.\\d+\\.\\d+)',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^pkg\\/versions\\/versions\\.go$/',
+      ],
+      matchStrings: [
+        'DefaultImageName = "(?<depName>.+?):(?<currentValue>.*?)"\\n',
+        'DefaultPgbouncerImage = "(?<depName>.+?):(?<currentValue>.*?)"\\n',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'loose',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^tests\\/utils\\/minio\\/minio\\.go$/',
+      ],
+      matchStrings: [
+        'minioImage = "(?<depName>.+?):(?<currentValue>.*?)"',
+        'minioClientImage = "(?<depName>.+?):(?<currentValue>.*?)"',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'regex:^RELEASE\\.(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})T\\d{2}-\\d{2}-\\d{2}Z$',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns:  [
+        '/^\\.github\\/workflows\\/[^/]+\\.ya?ml$/',
+        '/^hack/e2e/run-e2e-suite.sh$/',
+        '/^hack/e2e/run-e2e\\.sh$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\s+go install ([^@]+?)@(?<currentValue>.+)',
+      ],
+    },
+  ],
+  packageRules: [
+    {
+      matchDatasources: [
+        'docker',
+      ],
+      allowedVersions: '!/alpha/',
+    },
+    {
+      matchDatasources: [
+        'go',
+      ],
+      matchDepNames: [
+        'k8s.io/client-go',
+      ],
+      allowedVersions: '<1.0',
+    },
+    {
+      matchDatasources: [
+        'go',
+      ],
+      groupName: 'kubernetes patches',
+      matchUpdateTypes: [
+        'patch',
+        'digest',
+      ],
+      matchPackageNames: [
+        'k8s.io{/,}**',
+        'sigs.k8s.io{/,}**',
+        'github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring{/,}**',
+      ],
+      matchDepNames: [
+        '!sigs.k8s.io/kustomize/kustomize/v5',
+        '!sigs.k8s.io/controller-tools',
+      ],
+    },
+    {
+      matchDatasources: [
+        'go',
+      ],
+      matchUpdateTypes: [
+        'major',
+        'minor',
+      ],
+      matchPackageNames: [
+        'k8s.io{/,}**',
+        'sigs.k8s.io{/,}**',
+        'github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring{/,}**',
+      ],
+    },
+    {
+      matchDatasources: [
+        'go',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      matchPackageNames: [
+        '*',
+        '!k8s.io{/,}**',
+        '!sigs.k8s.io{/,}**',
+        '!github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring{/,}**',
+      ],
+    },
+    {
+      matchDatasources: [
+        'go',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'digest',
+      ],
+      groupName: 'all non-major go dependencies',
+      matchPackageNames: [
+        '*',
+        '!k8s.io{/,}**',
+        '!sigs.k8s.io{/,}**',
+        '!github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring{/,}**',
+        '!github.com/cloudnative-pg/{/,}**',
+      ],
+    },
+    {
+      matchDatasources: [
+        'github-tags',
+      ],
+      matchUpdateTypes: [
+        'digest',
+        'pinDigest',
+        'minor',
+        'patch',
+      ],
+      groupName: 'all non-major github action',
+      pinDigests: true,
+    },
+    {
+      groupName: 'kubernetes CSI',
+      separateMajorMinor: false,
+      pinDigests: false,
+      matchPackageNames: [
+        'kubernetes-csi{/,}**',
+        'rook{/,}**',
+      ],
+    },
+    {
+      groupName: 'backup test tools',
+      separateMajorMinor: false,
+      pinDigests: false,
+      matchPackageNames: [
+        'vmware-tanzu{/,}**',
+        'minio{/,}**',
+      ],
+    },
+    {
+      groupName: 'operator framework',
+      separateMajorMinor: false,
+      pinDigests: false,
+      matchPackageNames: [
+        'operator-framework{/,}**',
+        'redhat-openshift-ecosystem{/,}**',
+        'quay.io/operator-framework{/,}**',
+      ],
+    },
+    {
+      groupName: 'cnpg',
+      matchPackageNames: [
+        'github.com/cloudnative-pg{/,}**',
+      ],
+      separateMajorMinor: false,
+      pinDigests: false,
+    },
+    {
+      groupName: 'container distroless digests',
+      matchPackageNames: [
+        'gcr.io/distroless{/,}**',
+      ],
+      pinDigests: true,
+      separateMajorMinor: false,
+    },
+    {
+      groupName: 'Containers no-digests',
+      matchPackageNames: [
+        'kindest{/,}**',
+        'getwoke{/,}**',
+        'jonasbn/github-action-spellcheck'
+      ],
+      pinDigests: false,
+      separateMajorMinor: false,
+    }
+  ],
+}

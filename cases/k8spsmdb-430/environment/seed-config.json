@@ -1,0 +1,66 @@
+{
+  "case_id": "k8spsmdb-430",
+  "k8s_version": "v1.21",
+  "operator_bundle": "bundle-patched.yaml",
+  "operator_ready": [
+    "-n default get deploy percona-server-mongodb-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "secrets.yaml",
+      "ns": "default"
+    },
+    {
+      "file": "cr-shard.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get sts mongodb-cluster-rs0 -o jsonpath='{.status.readyReplicas}'",
+          "3"
+        ]
+      ],
+      "timeout": 1500,
+      "settle": 30
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "get configmap k8spsmdb-430-stale-state -o jsonpath='{.data.fault}'",
+      "present"
+    ],
+    [
+      "get configmap k8spsmdb-430-stale-state -o jsonpath='{.data.gen1}'",
+      "up"
+    ],
+    [
+      "get perconaservermongodbs mongodb-cluster -o jsonpath='{.metadata.name}'",
+      "mongodb-cluster"
+    ]
+  ],
+  "image_rewrites": [],
+  "trigger_script": "k8spsmdb-430-stale.sh",
+  "stale_proxy": {
+    "ns": "default",
+    "cluster_ip": "10.43.0.100",
+    "operator": {
+      "kind": "deploy",
+      "name": "percona-server-mongodb-operator"
+    },
+    "scope": {
+      "cr": {
+        "kind": "perconaservermongodbs",
+        "group": "psmdb.percona.com",
+        "version": "v1-7-0",
+        "namespace": "default",
+        "namePrefix": "mongodb-cluster"
+      },
+      "resources": []
+    }
+  },
+  "trigger_timeout": 2400,
+  "poll_healthy_steps": 2
+}

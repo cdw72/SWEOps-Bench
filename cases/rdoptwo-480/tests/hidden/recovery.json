@@ -1,0 +1,40 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "redis-operator",
+    "get",
+    "deploy",
+    "redis-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "GO111MODULE=on",
+   "go",
+   "build",
+   "-a",
+   "-o",
+   "/tmp/rec/bin/manager",
+   "main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/manager",
+    "/manager"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "redis-operator/redis-operator"
+ },
+ "settle": 120,
+ "slug": "rdoptwo-480"
+}

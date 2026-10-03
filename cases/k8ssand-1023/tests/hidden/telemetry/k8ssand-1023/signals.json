@@ -1,0 +1,29 @@
+{
+ "case": "k8ssand-1023",
+ "confirmed": [
+  {
+   "kind": "object_secrets",
+   "target": "default/cassandra-datacenter-keystore",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": false,
+    "fixed": true
+   },
+   "note": "buggy keystore \u7f3a(\u4e2d\u65ad\u6001 CA \u6b8b\u7559\u81f4\u6c38\u4e0d\u8865\u5efa)+FailedMount \u4f50\u8bc1;fixed #232 \u8865\u5efa"
+  },
+  {
+   "kind": "event_msg",
+   "target": "FailedMount: \"encryption-cred-storage\"",
+   "judge": "absent",
+   "values": {
+    "buggy": "MountVolume.SetUp failed for volume \"encryption-cred-storage\"",
+    "fixed": "(\u65e0)"
+   },
+   "note": "2026-09-10 \u8865:\u65e7\u62a5\u544a events \u53ea\u7ed9\u805a\u5408\u8ba1\u6570(14v13),\u8fd9\u6761\u6210\u65cf\u6d88\u606f\u88ab\u6df9;\u9010\u5b57 = secret \"cassandra-\u2026-keystore\" not found  ||  2026-09-12 \u4fee:\u539f target \u5192\u53f7\u540e\u662f 'MountVolume.SetUp failed for volume',\u800c diff_telemetry \u7684 event_msg \u5224\u51b3\u53ea\u53d6**\u524d 30 \u5b57\u7b26**\u505a\u5b50\u4e32('MountVolume.SetUp failed for v'),\u4e8e\u662f local-path-provisioner \u81ea\u5df1\u90a3\u6761\u542f\u52a8\u7ade\u6001 FailedMount(volume \"config-volume\" : configmap \"local-path-config\" not found)\u4e5f\u547d\u4e2d\u5e76\u88ab\u53d6\u6210 got \u2192 fixed \u4fa7\u672c\u8be5 '(\u65e0)' \u5374\u8bfb\u5230\u5b83 \u2192 \u5047 MISMATCH\u3002\u6539\u7528\u5377\u540d(25 \u5b57\u7b26,\u4e0d\u88ab\u622a\u65ad)\u9489\u4f4f\u672c\u6848\u673a\u5236 = internode keystore secret \u7f3a\u3002\u8bb0\u5f55\u5feb\u7167\u4e24\u4fa7\u884c\u4e3a\u9010\u5b57\u4e0d\u53d8(buggy\u2192\u8be5\u6d88\u606f,fixed\u2192\u65e0)\u3002"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

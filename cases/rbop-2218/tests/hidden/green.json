@@ -1,0 +1,1 @@
+{"case": "rbop-2218", "pkgs": ["./internal/metadata/...", "./internal/resource/...", "./internal/status/..."], "green": ["github.com/rabbitmq/cluster-operator/internal/metadata::TestResource", "github.com/rabbitmq/cluster-operator/internal/resource::TestResource", "github.com/rabbitmq/cluster-operator/internal/status::TestStatus"]}

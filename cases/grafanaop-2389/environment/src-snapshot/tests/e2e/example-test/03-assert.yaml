@@ -1,0 +1,16 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: grafana-dashboard
+status:
+  conditions:
+    - type: DashboardSynchronized
+      reason: ApplySuccessful
+      status: "True"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-plugins
+binaryData:
+  dashboard_grafana-operator-example-test_grafana-dashboard: W3sibmFtZSI6ImdyYWZhbmEtcGllY2hhcnQtcGFuZWwiLCJ2ZXJzaW9uIjoiMS4zLjkifV0=

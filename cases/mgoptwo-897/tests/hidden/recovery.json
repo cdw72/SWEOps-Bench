@@ -1,0 +1,42 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "mongodb",
+    "get",
+    "deploy",
+    "percona-server-mongodb-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "CGO_ENABLED=0",
+   "GO_LDFLAGS=",
+   "go",
+   "build",
+   "-mod=vendor",
+   "-ldflags",
+   "-w -s -X main.GitCommit=54950f7e56cde893c4b36a061c6335598b84873d -X main.GitBranch=release-1.12.0",
+   "-o",
+   "/tmp/rec/bin/percona-server-mongodb-operator",
+   "cmd/manager/main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/percona-server-mongodb-operator",
+    "/usr/local/bin/percona-server-mongodb-operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "mongodb/percona-server-mongodb-operator"
+ },
+ "settle": 120,
+ "slug": "mgoptwo-897"
+}

@@ -1,0 +1,3 @@
+version: "2"
+domain: rabbitmq.com
+repo: github.com/rabbitmq/cluster-operator

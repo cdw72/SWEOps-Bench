@@ -1,0 +1,64 @@
+# Download docker images
+# Load docker images
+name: run-integration-test
+description: "Run integration test"
+inputs:
+  integration_test:
+    description: "M_INTEG_DIR value"
+    required: true
+  serverVersion:
+    description: "Override server version used in the test file"
+    required: false
+  serverImage:
+    description: "Override server image used in the test file"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Free diskspace by removing unused packages
+      shell: bash
+      run: |
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+    # The runners already have the latest versions of tools, no need to reinstall them
+    - name: Link tools
+      shell: bash
+      run: |
+        mkdir bin
+        ln -s /usr/local/bin/kustomize bin/kustomize
+    - name: Create kind cluster
+      shell: bash
+      run: |
+        hack/cluster.sh
+    - name: Download cass-operator image
+      uses: actions/download-artifact@v4
+      with:
+        name: cass-operator
+        path: /tmp
+    - name: Download system-logger image
+      uses: actions/download-artifact@v4
+      with:
+        name: system-logger
+        path: /tmp
+    - name: Load Docker images
+      shell: bash
+      id: load
+      run: |
+        echo "operator_img=$(docker load --input /tmp/k8ssandra-cass-operator.tar | cut -f 3 -d' ')" >> $GITHUB_OUTPUT
+        echo "logger_img=$(docker load --input /tmp/k8ssandra-system-logger.tar | cut -f 3 -d' ')" >> $GITHUB_OUTPUT
+    - name: Load image on the nodes of the cluster
+      shell: bash
+      run: |
+        kind load docker-image --name=kind ${{ steps.load.outputs.operator_img }}
+        kind load docker-image --name=kind ${{ steps.load.outputs.logger_img }}
+    - name: Run integration test ( ${{ inputs.integration_test }} )
+      shell: bash
+      run: |
+        IMG=${{ steps.load.outputs.operator_img }} LOG_IMG=${{ steps.load.outputs.logger_img }} make integ-test

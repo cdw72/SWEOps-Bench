@@ -1,0 +1,42 @@
+apiVersion: operator.victoriametrics.com/v1alpha1
+kind: VMDistributed
+metadata:
+  name: sample-override
+spec:
+  vmauth:
+    name: global-vmauth
+    spec:
+      unauthorizedUserAccessSpec:
+        targetRefs:
+          - name: read
+          - name: write
+      replicaCount: 1
+  zoneCommon:
+    vmagent:
+      spec:
+        replicaCount: 1
+    vmcluster:
+      name: vmcluster-%ZONE%
+      spec:
+        vmstorage:
+          replicaCount: 1
+        vmselect:
+          replicaCount: 1
+        vminsert:
+          replicaCount: 1
+  zones:
+    - name: us-east-1
+      vmcluster:
+        spec:
+          vmselect:
+            replicaCount: 3
+    - name: us-west-2
+      vmcluster:
+        spec:
+          vmselect:
+            replicaCount: 4
+    - name: eu-west-1
+      vmcluster:
+        spec:
+          vmselect:
+            replicaCount: 2

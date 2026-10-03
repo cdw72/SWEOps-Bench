@@ -1,0 +1,79 @@
+name: Update docs
+
+on:
+  push:
+    branches:
+      - 'master'
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/docs.yaml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    environment:
+      name: docs
+      url: https://docs.victoriametrics.com/operator
+    steps:
+      - name: Checkout operator repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          path: __vm-operator
+
+      - name: Checkout docs repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          repository: VictoriaMetrics/vmdocs
+          ref: main
+          token: ${{ secrets.VM_BOT_GH_TOKEN }}
+          path: __vm-docs
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with:
+          go-version-file: '__vm-operator/go.mod'
+          check-latest: true
+          cache: true
+        id: go
+
+      - name: Import GPG key
+        id: import-gpg
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd
+        with:
+          gpg_private_key: ${{ secrets.VM_BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.VM_BOT_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_config_global: true
+
+      - name: Copy docs
+        id: update
+        run: |
+          make docs
+          # Sync markdown files and pictures
+          rsync -zarv \
+            --include="*/" \
+            --include="*.webp" \
+            --include="*.md" \
+            --exclude="*" \
+            docs/ ../__vm-docs/content/operator/
+          echo "SHORT_SHA=$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_OUTPUT
+        working-directory: __vm-operator
+
+      - name: Push to vmdocs
+        run: |
+          git config --global user.name "${{ steps.import-gpg.outputs.email }}"
+          git config --global user.email "${{ steps.import-gpg.outputs.email }}"
+          if [[ -n $(git status --porcelain) ]]; then
+            git add content/operator
+            git commit -S -m "sync docs with VictoriaMetrics/operator commit: ${{ steps.update.outputs.SHORT_SHA }}"
+            git push
+          fi
+        working-directory: __vm-docs
+        env:
+          GH_TOKEN: "${{ secrets.VM_BOT_GH_TOKEN }}"
+          GITHUB_TOKEN: "${{ secrets.VM_BOT_GH_TOKEN }}"

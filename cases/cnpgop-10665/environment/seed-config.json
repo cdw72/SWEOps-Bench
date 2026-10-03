@@ -1,0 +1,54 @@
+{
+  "case_id": "cnpgop",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle-cnpg129.yaml",
+  "operator_ready": [
+    "-n cnpg-system get deploy cnpg-controller-manager",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cr-10665.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get cluster c -o jsonpath={.status.phase}",
+          "Cluster in healthy state"
+        ]
+      ],
+      "timeout": 900
+    },
+    {
+      "file": "pooler-10665.yaml",
+      "ns": "default",
+      "settle": 30
+    }
+  ],
+  "settle_sec": 150,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "-n cnpg-system logs deploy/cnpg-controller-manager --tail=300",
+      "nil pointer dereference"
+    ],
+    [
+      "-n cnpg-system logs deploy/cnpg-controller-manager --tail=300",
+      "pooler_resources.go"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "cnpg-system"
+  ],
+  "trigger": [
+    [
+      "delete",
+      "cluster",
+      "c",
+      "-n",
+      "default"
+    ]
+  ],
+  "poll_healthy_steps": 2
+}

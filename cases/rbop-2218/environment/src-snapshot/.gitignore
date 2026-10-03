@@ -1,0 +1,7 @@
+vendor/
+cover.out
+**/*.yaml-e
+.idea/
+.envrc
+tags
+releases/

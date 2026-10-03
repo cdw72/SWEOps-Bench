@@ -1,0 +1,29 @@
+{
+ "case": "cassop-696",
+ "confirmed": [
+  {
+   "kind": "cr_conditions",
+   "target": "cassandradatacenters.cassandra.datastax.com/test-cluster",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "(\u65e0\u6761\u4ef6)",
+    "fixed": "Healthy=True"
+   },
+   "note": "re-ground:buggy DC \u5361\u6b7b\u65e0 condition,fixed \u8fbe Healthy=True(#696 \u4fee\u590d\u6001)"
+  },
+  {
+   "kind": "sts_ready",
+   "target": "development-test-cluster-rack3-sts",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/1",
+    "fixed": "1/1"
+   },
+   "note": "re-ground:buggy \u4efb\u4f55 rack \u90fd\u8d77\u4e0d\u6765,fixed \u81f3\u5c11 rack3 \u8d77\u52a8"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

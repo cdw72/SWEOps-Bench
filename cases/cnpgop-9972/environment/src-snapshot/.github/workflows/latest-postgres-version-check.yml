@@ -1,0 +1,104 @@
+# Checks the latest postgres image from `ghcr.io/cloudnative-pg/postgresql`,
+# and if there is a new one, updates the codebase with it
+
+name: latest-postgres-version-check
+
+on:
+  schedule:
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+
+permissions: read-all
+
+defaults:
+  run:
+    shell: "bash -Eeuo pipefail -x {0}"
+
+jobs:
+  check-latest-postgres-version:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: 3.14
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r .github/workflow-requirements.txt
+
+      - name: Generate PostgreSQL JSON files
+        run: |
+          python .github/postgres-versions-update.py
+
+      - name: Get the latest version of PostgreSQL Docker image
+        id: latest
+        env:
+          IMAGE_REPO: ghcr.io/cloudnative-pg/postgresql
+        run: |
+          LATEST_POSTGRES_VERSION=$(jq -r 'del(.[] | select(.[] | match("alpha|beta|rc"))) | .[keys | max][0]' < .github/pg_versions.json)
+          LATEST_POSTGRES_VERSION_IMAGE="${IMAGE_REPO}:${LATEST_POSTGRES_VERSION}"
+          echo "LATEST_POSTGRES_VERSION=$LATEST_POSTGRES_VERSION" >> $GITHUB_ENV
+          echo "LATEST_POSTGRES_VERSION_IMAGE=$LATEST_POSTGRES_VERSION_IMAGE" >> $GITHUB_ENV
+
+      - name: Get the current version of PostgreSQL
+        id: current
+        run: |
+          CURRENT_POSTGRES_VERSION_IMAGE=$(awk -F '"' '/DefaultImageName *=/{print $2}' pkg/versions/versions.go)
+          CURRENT_POSTGRES_VERSION=${CURRENT_POSTGRES_VERSION_IMAGE##*:}
+          echo "CURRENT_POSTGRES_VERSION=$CURRENT_POSTGRES_VERSION" >> $GITHUB_ENV
+          echo "CURRENT_POSTGRES_VERSION_IMAGE=$CURRENT_POSTGRES_VERSION_IMAGE" >> $GITHUB_ENV
+
+      - name: Update files to match the latest version of PostgreSQL
+        if: env.LATEST_POSTGRES_VERSION_IMAGE != env.CURRENT_POSTGRES_VERSION_IMAGE
+        env:
+          CURRENT_POSTGRES_VERSION: ${{ env.CURRENT_POSTGRES_VERSION }}
+          LATEST_POSTGRES_VERSION: ${{ env.LATEST_POSTGRES_VERSION }}
+          LATEST_POSTGRES_VERSION_IMAGE: ${{ env.LATEST_POSTGRES_VERSION_IMAGE }}
+        run: |
+          echo "New PostgreSQL version detected ; updating!"
+
+          # Update pkg/versions/versions.go
+          sed -i '/DefaultImageName *=/s@".*"@"'"${LATEST_POSTGRES_VERSION_IMAGE}"'"@' pkg/versions/versions.go
+
+          # Update docs directory (only .md and .yaml filename extensions)
+          CURRENT_POSTGRES_VERSION_MM=${CURRENT_POSTGRES_VERSION%%-*}
+          LATEST_POSTGRES_VERSION_MM=${LATEST_POSTGRES_VERSION%%-*}
+          find docs -type f \( -name '*.md' -o -name '*.yaml' \) \! -path '*release_notes*' -exec sed -i "/[ :]${CURRENT_POSTGRES_VERSION_MM//./\\.}/s/${CURRENT_POSTGRES_VERSION_MM//./\\.}/${LATEST_POSTGRES_VERSION_MM}/g" {} +
+
+      - name: Diff
+        run: |
+          git status
+          git diff
+
+      - name: Create PR to update PostgreSQL version
+        if: |
+          env.LATEST_POSTGRES_VERSION_IMAGE != env.CURRENT_POSTGRES_VERSION_IMAGE &&
+          github.ref == 'refs/heads/main'
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8
+        with:
+          token: ${{ secrets.REPO_GHA_PAT }}
+          title: "feat: update default PostgreSQL version to ${{ env.LATEST_POSTGRES_VERSION }}"
+          body: "Update default PostgreSQL version from ${{ env.CURRENT_POSTGRES_VERSION }} to ${{ env.LATEST_POSTGRES_VERSION }}"
+          branch: "postgres-versions-update"
+          author: "postgres-versions-updater <postgres-versions-updater@users.noreply.github.com>"
+          commit-message: "feat: update default PostgreSQL version to ${{ env.LATEST_POSTGRES_VERSION }}"
+          signoff: true
+
+      - name: Create Pull Request if postgresql versions have been updated
+        if: |
+          env.LATEST_POSTGRES_VERSION_IMAGE == env.CURRENT_POSTGRES_VERSION_IMAGE &&
+          github.ref == 'refs/heads/main'
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8
+        with:
+          token: ${{ secrets.REPO_GHA_PAT }}
+          title: "test: Updated Postgres versions used in E2E tests"
+          body: "Update the Postgres versions used in E2E tests"
+          branch: "postgres-versions-update"
+          author: "postgres-versions-updater <postgres-versions-updater@users.noreply.github.com>"
+          add-paths: ".github/"
+          commit-message: "test: Updated Postgres versions used in E2E tests"
+          signoff: true

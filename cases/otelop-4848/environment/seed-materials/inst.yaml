@@ -1,0 +1,10 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: inst
+  namespace: app
+spec:
+  exporter:
+    endpoint: http://otel-collector:4317
+  python:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:0.60b1

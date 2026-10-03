@@ -1,0 +1,128 @@
+apiVersion: pxc.percona.com/v1-11-0
+kind: PerconaXtraDBCluster
+metadata:
+  finalizers:
+  - delete-pxc-pods-in-order
+  name: test-cluster
+spec:
+  allowUnsafeConfigurations: false
+  backup:
+    image: percona/percona-xtradb-cluster-operator:1.11.0-pxc8.0-backup
+    imagePullPolicy: IfNotPresent
+    pitr:
+      enabled: false
+      storageName: STORAGE-NAME-HERE
+      timeBetweenUploads: 60
+    schedule:
+    - keep: 3
+      name: sat-night-backup
+      schedule: 0 0 * * 6
+      storageName: s3-us-west
+    - keep: 5
+      name: daily-backup
+      schedule: 0 0 * * *
+      storageName: fs-pvc
+    storages:
+      fs-pvc:
+        type: filesystem
+        volume:
+          persistentVolumeClaim:
+            accessModes:
+            - ReadWriteOnce
+            resources:
+              requests:
+                storage: 6G
+      s3-us-west:
+        s3:
+          bucket: S3-BACKUP-BUCKET-NAME-HERE
+          credentialsSecret: my-cluster-name-backup-s3
+          region: us-west-2
+        type: s3
+        verifyTLS: true
+  crVersion: 1.11.0
+  enableCRValidationWebhook: true
+  haproxy:
+    affinity:
+      # 2026-09-09: none(AffinityTopologyKeyOff,官方合法值)—— hostname 硬
+      # 反亲和下 fixed(gen1 selector=new)的 3 副本挤不进唯一 haproxy-role=new
+      # 节点 -> fixed 侧 haproxy 2/3 Pending = 伪快照污染;关掉后 fixed 可全部
+      # 落 new 节点,buggy 侧卡旧 selector 的故障判别不受影响。
+      antiAffinityTopologyKey: none
+    enabled: true
+    gracePeriod: 30
+    image: percona/percona-xtradb-cluster-operator:1.11.0-haproxy
+    imagePullPolicy: IfNotPresent
+    # 会话中触发器 seed 重做 (2026-08-25): nodeSelector 从创建起就带真实
+    # label(haproxy-role=old,seed_case.py 在 gen0 前给 worker1 打)。gen1 改
+    # 为 new 后 operator 不传播 -> STS 保持 old;drain 旧节点 -> Pod Pending。
+    nodeSelector:
+      haproxy-role: old
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 600m
+        memory: 1G
+    size: 3
+  logcollector:
+    enabled: true
+    image: percona/percona-xtradb-cluster-operator:1.11.0-logcollector
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 200m
+        memory: 100M
+  pmm:
+    enabled: false
+    image: percona/pmm-client:2.28.0
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 300m
+        memory: 150M
+    serverHost: monitoring-service
+  proxysql:
+    affinity:
+      antiAffinityTopologyKey: none
+    enabled: false
+    gracePeriod: 30
+    image: percona/percona-xtradb-cluster-operator:1.11.0-proxysql
+    imagePullPolicy: IfNotPresent
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 600m
+        memory: 1G
+    size: 3
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 2G
+  pxc:
+    affinity:
+      antiAffinityTopologyKey: none
+    autoRecovery: true
+    enabled: true
+    gracePeriod: 30
+    image: percona/percona-xtradb-cluster:8.0.27-18.1
+    imagePullPolicy: IfNotPresent
+    livenessDelaySec: 300
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 600m
+        memory: 1G
+    size: 3
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 6Gi
+  updateStrategy: SmartUpdate
+  upgradeOptions:
+    apply: 8.0-recommended
+    schedule: 0 4 * * *
+    versionServiceEndpoint: https://check.percona.com

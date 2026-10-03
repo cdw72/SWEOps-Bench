@@ -1,0 +1,45 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: must-gather
+spec:
+  namespace: chainsaw-must-gather
+  steps:
+  - name: Install Target Allocator
+    try:
+    - apply:
+        template: true
+        file: install-target-allocator.yaml
+    - assert:
+        file: assert-install-target-allocator.yaml
+    catch:
+    - podLogs:
+        selector: app.kubernetes.io/component=opentelemetry-targetallocator
+  - name: Add OpenShift namespace annotations
+    use:
+      template: ../../step-templates/openshift-namespace-annotations.yaml
+  - name: Create instrumentation CR and gather collector instance
+    try:
+    - apply:
+        file: install-collector-gather.yaml
+    - assert:
+        file: assert-install-collector-gather.yaml
+    - apply:
+        file: install-instrumentation.yaml
+  - name: Install app
+    try:
+    - apply:
+        file: install-app.yaml
+    - assert:
+        file: assert-install-app.yaml
+    catch:
+      - podLogs:
+          selector: app=my-nodejs
+  - name: Run the must-gather and verify the contents
+    try:
+    - script:
+        env:
+        - name: otelnamespace
+          value: opentelemetry-operator-system
+        timeout: 5m
+        content: ./check_must_gather.sh

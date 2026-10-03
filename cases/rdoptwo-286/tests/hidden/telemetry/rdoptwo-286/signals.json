@@ -1,0 +1,29 @@
+{
+ "case": "rdoptwo-286",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "nil_panic_286",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   },
+   "note": "nil-deref panic(\u73b0\u5377+previous \u5408\u8ba1);restart 2/0 \u4f50\u8bc1"
+  },
+  {
+   "kind": "restart_count",
+   "target": "redis-operator/redis-operator/manager",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   },
+   "note": "manager \u968f panic \u91cd\u542f"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

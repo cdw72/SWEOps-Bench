@@ -1,0 +1,39 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "redis-operator",
+    "get",
+    "deploy",
+    "redis-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GO111MODULE=on",
+   "go",
+   "build",
+   "-ldflags",
+   "-s",
+   "-a",
+   "-o",
+   "/tmp/rec/bin/operator",
+   "cmd/main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/operator",
+    "/operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "redis-operator/redis-operator"
+ },
+ "settle": 120,
+ "slug": "rdoptwo-1540"
+}

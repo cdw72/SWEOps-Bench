@@ -1,0 +1,49 @@
+resources:
+- ../examples
+- ../default-with-webhook
+- scorecard.yaml
+patches:
+- patch: |-
+    $patch: delete
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: vmagent
+      namespace: vm
+- patch: |-
+    $patch: delete
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: vmagent
+- patch: |-
+    $patch: delete
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: am-global-config
+- patch: |-
+    $patch: delete
+    kind: ClusterRoleBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    metadata:
+      name: vmagent
+- patch: |-
+    $patch: delete
+    kind: NetworkPolicy
+    apiVersion: networking.k8s.io/v1
+    metadata:
+      name: allow-metrics-traffic
+      namespace: system
+- patch: |-
+    $patch: delete
+    kind: NetworkPolicy
+    apiVersion: networking.k8s.io/v1
+    metadata:
+      name: allow-webhook-traffic
+      namespace: system
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: manager
+  newName: docker.io/victoriametrics/operator

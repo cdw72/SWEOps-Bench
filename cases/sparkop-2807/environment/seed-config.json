@@ -1,0 +1,60 @@
+{
+  "case_id": "sparkop-2807",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_v2-4-0.yaml",
+  "operator_ready": [
+    "-n default get deploy spark-operator-controller",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cr-2807.yaml",
+      "ns": "default",
+      "settle": 180
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n default logs deploy/spark-operator-controller --tail=500",
+      "nil pointer dereference"
+    ],
+    [
+      "-n default logs deploy/spark-operator-controller --tail=500",
+      "sparkconnect/options.go"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "default"
+  ],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 180
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "patch",
+      "sparkconnect",
+      "sc",
+      "--type=json",
+      "-p",
+      "[{\"op\":\"remove\",\"path\":\"/spec/executor/template\"}]"
+    ],
+    [
+      "-n",
+      "default",
+      "delete",
+      "pod",
+      "sc-server",
+      "--wait=false"
+    ]
+  ],
+  "poll_fault_settle": 180
+}

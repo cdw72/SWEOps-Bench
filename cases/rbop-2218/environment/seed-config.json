@@ -1,0 +1,64 @@
+{
+  "case_id": "rbop-2218",
+  "k8s_version": "v1.23",
+  "operator_bundle": "cluster-operator.yaml",
+  "operator_ready": [
+    "-n default get deploy rabbitmq-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "rmqc-1.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get pods rabbitmq-cluster-server-0 -o jsonpath={.status.phase}",
+          "Running"
+        ]
+      ],
+      "timeout": 900
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "-n default get rabbitmqcluster rabbitmq-cluster -o jsonpath='{.status.conditions[?(@.type==\"ReconcileSuccess\")].status}'",
+      "False"
+    ],
+    [
+      "-n default logs deploy/rabbitmq-operator --tail=200",
+      "does not match template `labels`"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "default"
+  ],
+  "pre_manifests": [
+    "sieve-global-config.yaml"
+  ],
+  "trigger": [
+    [
+      "-n",
+      "default",
+      "patch",
+      "rabbitmqcluster",
+      "rabbitmq-cluster",
+      "--type",
+      "merge",
+      "-p",
+      "'{\"spec\":{\"override\":{\"statefulSet\":{\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"bogus-2218\"}}}}}}}'"
+    ],
+    [
+      "-n",
+      "default",
+      "delete",
+      "sts",
+      "rabbitmq-cluster-server",
+      "--wait=false"
+    ]
+  ],
+  "poll_healthy_steps": 1
+}

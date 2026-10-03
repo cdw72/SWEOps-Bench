@@ -1,0 +1,7 @@
+.idea/
+.vscode/
+bin/
+codecov.yaml
+cover.out
+.DS_Store
+*.iml

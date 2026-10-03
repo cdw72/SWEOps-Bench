@@ -1,0 +1,52 @@
+{
+  "case_id": "vmop-2356",
+  "operator_ready_timeout": 900,
+  "ensure_ns": [
+    "vm"
+  ],
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n vm get deploy operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "-n default get svc vmanomaly-vmanomaly",
+          "vmanomaly-vmanomaly"
+        ]
+      ],
+      "settle": 90,
+      "timeout": 420
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n vm logs deploy/operator --tail=300",
+      "field seasonalities not found in type config.prophetModel"
+    ]
+  ],
+  "image_rewrites": [],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 60
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/mutated-000.yaml"
+    ]
+  ],
+  "poll_fault_settle": 90
+}

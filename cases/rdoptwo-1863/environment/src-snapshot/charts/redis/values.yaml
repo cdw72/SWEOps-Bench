@@ -1,0 +1,193 @@
+---
+redisStandalone:
+  name: ""
+  image: quay.io/opstree/redis
+  tag: v7.0.15
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+    # - name:  Secret with Registry credentials
+  redisSecret:
+    secretName: ""
+    secretKey: ""
+  # serviceType must be one of: ClusterIP, NodePort, LoadBalancer
+  serviceType: ClusterIP
+  resources: {}
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+  ignoreAnnotations: []
+    # - "redis.opstreelabs.in/ignore"
+  minReadySeconds: 0
+  # -- Some fields of statefulset are immutable, such as volumeClaimTemplates.
+  # When set to true, the operator will delete the statefulset and recreate it. Default is false.
+  recreateStatefulSetOnUpdateInvalid: false
+  # -- MaxMemoryPercentOfLimit is the percentage of the Redis container memory limit to be used as maxmemory.
+  #    When a memory limit exists, the operator also exposes the computed value via the REDIS_MAX_MEMORY env var.
+  #    Default is 0 (disabled).
+  maxMemoryPercentOfLimit: 0
+  # -- DynamicConfig is a list of "key value" Redis parameters applied at runtime
+  #    via CONFIG SET (without triggering a rolling restart). Note: CONFIG SET is
+  #    not persisted to disk, so values are not retained across pod restarts unless
+  #    they are also provided through externalConfig.
+  #    Example:
+  #    dynamicConfig:
+  #      - "maxmemory-policy allkeys-lru"
+  #      - "slowlog-log-slower-than 5000"
+  dynamicConfig: []
+  persistentVolumeClaimRetentionPolicy: {}
+    # whenDeleted: Delete
+    # whenScaled: Retain
+
+labels: {}
+#   foo: bar
+#   test: echo
+
+annotations: {}
+#   annotation-key: "annotation-value"
+#   prometheus.io/scrape: "true"
+
+externalConfig:
+  enabled: false
+  data: |
+    tcp-keepalive 400
+    slowlog-max-len 158
+    stream-node-max-bytes 2048
+
+externalService:
+  enabled: false
+  # annotations:
+  #   foo: bar
+  serviceType: NodePort
+  port: 6379
+  #nodePort: 31000
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  # -- Namespace where servicemonitor resource will be created, if empty it will be created in the same namespace as the redis
+  namespace: ""
+  # -- extraLabels are added to the servicemonitor when enabled set to true
+  extraLabels: {}
+    # foo: bar
+    # team: devops
+
+redisExporter:
+  enabled: false
+  image: quay.io/opstree/redis-exporter
+  tag: "v1.44.0"
+  imagePullPolicy: IfNotPresent
+  resources: {}
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+  env: []
+    # - name: VAR_NAME
+    #   value: "value1"
+  securityContext: {}
+
+initContainer:
+  enabled: false
+  image: ""
+  imagePullPolicy: "IfNotPresent"
+  resources: {}
+    # requests:
+    #   memory: "64Mi"
+    #   cpu: "250m"
+    # limits:
+    #   memory: "128Mi"
+    #   cpu: "500m"
+  env: []
+  command: []
+  args: []
+
+sidecars: []
+  # - name: "sidecar-example"
+  #   image: "busybox:latest"
+  #   imagePullPolicy: "IfNotPresent"
+  #   resources:
+  #     limits:
+  #       cpu: "100m"
+  #       memory: "128Mi"
+  #     requests:
+  #       cpu: "50m"
+  #       memory: "64Mi"
+  #   env: []
+  #   # - name: MY_ENV_VAR
+  #   #   value: "my-env-var-value"
+  #   command: []
+  #   # - "/bin/sh"
+  #   # - "-c"
+  #   # - "sleep 3600"
+
+priorityClassName: ""
+
+nodeSelector: {}
+  # memory: medium
+
+storageSpec:
+  volumeClaimTemplate:
+    spec:
+      # storageClassName: standard
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+  #   selector: {}
+
+podSecurityContext:
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext: {}
+
+affinity: {}
+  # nodeAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #     nodeSelectorTerms:
+  #     - matchExpressions:
+  #       - key: disktype
+  #         operator: In
+  #         values:
+  #         - ssd
+
+tolerations: []
+  # - key: "key"
+  #   operator: "Equal"
+  #   value: "value"
+  #   effect: "NoSchedule"
+
+topologySpreadConstraints: []
+  # - maxSkew: 1
+  #   topologyKey: kubernetes.io/hostname
+  #   whenUnsatisfiable: DoNotSchedule
+  #   labelSelector:
+  #     matchLabels:
+  #       app: redis
+
+serviceAccountName: ""
+
+TLS:
+  ca: ca.crt
+  cert: tls.crt
+  key: tls.key
+  secret:
+    secretName: ""
+
+acl:
+  # Configure ACL from Kubernetes Secret
+  secret:
+    secretName: ""
+  # Configure ACL from PersistentVolumeClaim
+  # The PVC must contain a file named "user.acl" at root level
+  # persistentVolumeClaim: "redis-acl-pvc"
+
+env: []
+  # - name: VAR_NAME
+  #   value: "value1"

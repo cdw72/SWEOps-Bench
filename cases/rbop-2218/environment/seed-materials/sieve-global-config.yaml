@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sieve-testing-global-config
+  namespace: default
+data:
+  sieveTestPlan: ""

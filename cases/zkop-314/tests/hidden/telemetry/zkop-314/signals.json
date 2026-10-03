@@ -1,0 +1,19 @@
+{
+ "case": "zkop-314",
+ "confirmed": [
+  {
+   "kind": "sts_ready",
+   "target": "zookeeper-cluster",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "1/1",
+    "fixed": "2/2"
+   },
+   "note": "stale \u7f29\u5bb9:buggy \u7f29 2\u21921 \u4e22\u5065\u5eb7 pod;fixed \u62d2 Staleness \u4fdd 2/2"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

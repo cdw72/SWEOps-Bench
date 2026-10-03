@@ -1,0 +1,25 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: arbiter
+spec:
+  #platform: openshift
+  image:
+  replsets:
+  - name: rs0
+    configuration: |
+      security:
+        enableEncryption: true
+    affinity:
+      antiAffinityTopologyKey: none
+    arbiter:
+      enabled: true
+      size: 1
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 1Gi
+    size: 4
+  secrets:
+    users: some-users

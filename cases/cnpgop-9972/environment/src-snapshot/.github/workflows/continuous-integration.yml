@@ -1,0 +1,849 @@
+# This workflow executes the following actions:
+# - Runs Golang and ShellCheck linters
+# - Runs Unit tests
+# - Verifies API doc and CRDs are up to date
+# - Builds the operator image (no push)
+name: continuous-integration
+on:
+  push:
+    branches:
+      - main
+      - release-*
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron:  '0 1 * * *'
+
+permissions: read-all
+
+# set up environment variables to be used across all the jobs
+env:
+  # renovate: datasource=golang-version depName=golang versioning=loose
+  GOLANG_VERSION: "1.25.7"
+  # renovate: datasource=github-releases depName=golangci/golangci-lint versioning=loose
+  GOLANGCI_LINT_VERSION: "v2.8.0"
+  KUBEBUILDER_VERSION: "2.3.1"
+  # renovate: datasource=github-tags depName=kubernetes-sigs/kind versioning=semver
+  KIND_VERSION: "v0.31.0"
+  OPERATOR_IMAGE_NAME: "ghcr.io/${{ github.repository }}-testing"
+  API_DOC_NAME: "cloudnative-pg.v1.md"
+  SLACK_USERNAME: "cnpg-bot"
+  # Keep in mind that adding more platforms (architectures) will increase the building
+  # time even if we use the ghcache for the building process.
+  PLATFORMS: "linux/amd64,linux/arm64"
+  BUILD_PUSH_PROVENANCE: ""
+  BUILD_PUSH_CACHE_FROM: ""
+  BUILD_PUSH_CACHE_TO: ""
+  BUILD_PLUGIN_RELEASE_ARGS: "build --skip=validate --clean --id kubectl-cnpg --timeout 60m"
+  BUILD_MANAGER_RELEASE_ARGS: "build --skip=validate --clean --id manager-race"
+  REPOSITORY_OWNER: "cloudnative-pg"
+  REGISTRY: "ghcr.io"
+  REGISTRY_USER: ${{ github.actor }}
+  REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+  SIGN_IMAGES: "true"
+  OPP_SCRIPT_URL: "https://raw.githubusercontent.com/redhat-openshift-ecosystem/community-operators-pipeline/ci/latest/ci/scripts/opp.sh"
+
+defaults:
+  run:
+    # default failure handling for shell scripts in 'run' steps
+    shell: 'bash -Eeuo pipefail -x {0}'
+
+jobs:
+  # Trigger the workflow on release-* branches for smoke testing whenever it's a scheduled run.
+  # Note: this is a workaround since we can't directly schedule-run a workflow from a non default branch
+  smoke_test_release_branches:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    name: smoke test release-* branches when it's a scheduled run
+    if: github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [release-1.25, release-1.27, release-1.28]
+    steps:
+      - name: Invoke workflow with inputs
+        uses: benc-uk/workflow-dispatch@e2e5e9a103e331dad343f381a29e654aea3cf8fc # v1
+        with:
+          workflow: continuous-integration
+          ref: ${{ matrix.branch }}
+
+  # Detects if we should skip the workflow due to being duplicated. Exceptions:
+  #   1. it's on 'main' branch
+  #   2. it's triggered by events in the 'do_not_skip' list
+  duplicate_runs:
+    runs-on: ubuntu-24.04
+    name: Skip duplicate runs
+    continue-on-error: true
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip == 'true' && github.ref != 'refs/heads/main' }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@f75f66ce1886f00957d99748a42c724f4330bdcf # v5.3.1
+        with:
+          concurrent_skipping: 'same_content'
+          skip_after_successful_duplicate: 'true'
+          paths_ignore: '["README.md", "docs/**"]'
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule"]'
+
+  # Classify codebase changes along 5 different dimensions based on the files
+  # changed in the commit/PR, and create 5 different filters which are used in
+  # the following jobs to decide whether the step should be skipped.
+  change-triage:
+    name: Check changed files
+    needs: duplicate_runs
+    if: ${{ needs.duplicate_runs.outputs.should_skip != 'true' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      docs-changed: ${{ steps.filter.outputs.docs-changed }}
+      operator-changed: ${{ steps.filter.outputs.operator-changed }}
+      test-changed: ${{ steps.filter.outputs.test-changed }}
+      shell-script-changed: ${{ steps.filter.outputs.shell-script-changed }}
+      go-code-changed: ${{ steps.filter.outputs.go-code-changed }}
+      renovate-changed: ${{ steps.filter.outputs.renovate-changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check for changes
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        # Remember to add new folders in the operator-changed filter if needed
+        with:
+          base: ${{ (github.event_name == 'schedule') && 'main' || '' }}
+          filters: |
+            docs-changed:
+              - '**/*.md'
+              - 'docs/**'
+              - '.wordlist-en-custom.txt'
+            operator-changed:
+              - 'api/**'
+              - 'cmd/**'
+              - 'config/**'
+              - 'internal/**'
+              - 'licenses/**'
+              - 'pkg/**'
+              - '.github/workflows/continuous-delivery.yml'
+              - '.github/workflows/continuous-integration.yml'
+              - '.goreleaser*.yml'
+              - 'Dockerfile'
+              - 'docker-bake.hcl'
+              - 'Makefile'
+              - 'go.mod'
+              - 'go.sum'
+            test-changed:
+              - '.github/e2e-matrix-generator.py'
+              - '.github/generate-test-artifacts.py'
+              - 'tests/**'
+              - 'hack/**'
+            shell-script-changed:
+              - '**/*.sh'
+            go-code-changed:
+              - '**/*.go'
+              - '.golangci.yml'
+            renovate-changed:
+              - '.github/renovate.json5'
+
+  go-linters:
+    name: Run linters
+    needs:
+      - duplicate_runs
+      - change-triage
+    # We need always run linter as go linter is a required check
+    if: needs.duplicate_runs.outputs.should_skip != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          # Disable setup-go caching. Cache is better handled by the golangci-lint action
+          cache: false
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Check go mod tidy has no pending changes
+        run: |
+          make go-mod-check
+
+  renovate-linter:
+    name: Renovate Linter
+    needs:
+      - duplicate_runs
+      - change-triage
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      needs.change-triage.outputs.renovate-changed == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Validate Renovate JSON
+        run: npx --yes --package renovate@latest -- renovate-config-validator
+
+  go-vulncheck:
+    name: Run govulncheck
+    needs:
+      - duplicate_runs
+      - change-triage
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      (
+        needs.change-triage.outputs.operator-changed == 'true' ||
+        needs.change-triage.outputs.go-code-changed == 'true'
+      )
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1
+        with:
+          go-version-input: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+  shellcheck:
+    name: Run shellcheck linter
+    needs:
+      - duplicate_runs
+      - change-triage
+    # Run shellcheck linter only if shell code has changed
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      needs.change-triage.outputs.shell-script-changed == 'true'
+    runs-on: ubuntu-24.04
+    env:
+        SHELLCHECK_OPTS: -a -x -S style
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+
+  generate-unit-tests-jobs:
+    name: Generate jobs for unit tests
+    needs:
+      - duplicate_runs
+      - change-triage
+    # Generate unit tests jobs only if the operator or the Go codebase have changed
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      (
+        needs.change-triage.outputs.operator-changed == 'true' ||
+        needs.change-triage.outputs.go-code-changed == 'true'
+      )
+    runs-on: ubuntu-24.04
+    outputs:
+      k8sMatrix: ${{ steps.get-k8s-versions.outputs.k8s_versions }}
+      latest_k8s_version: ${{ steps.get-k8s-versions.outputs.latest_k8s_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Get k8s versions for unit test
+        id: get-k8s-versions
+        shell: bash
+        run: |
+          k8s_versions=$(jq -c '
+            .unit_test.max as $max |
+            .unit_test.min as $min |
+            $min | [ while(. <= $max;
+                . | split(".") | .[1] |= (.|tonumber|.+1|tostring) | join(".")
+              )
+            ] |
+            .[] |= .+".x"
+          ' < .github/k8s_versions_scope.json)
+          echo "k8s_versions=${k8s_versions}" >> $GITHUB_OUTPUT
+
+          latest_k8s_version=$(jq -r '.|last' <<< $k8s_versions)
+          echo "latest_k8s_version=${latest_k8s_version}" >> $GITHUB_OUTPUT
+
+  tests:
+    name: Run unit tests
+    needs:
+      - duplicate_runs
+      - change-triage
+      - generate-unit-tests-jobs
+    # Run unit tests only if the operator or the Go codebase have changed
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      (
+        needs.change-triage.outputs.operator-changed == 'true' ||
+        needs.change-triage.outputs.go-code-changed == 'true'
+      )
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # The Unit test is performed per multiple supported k8s versions (each job for each k8s version) as below:
+        k8s-version: ${{ fromJSON(needs.generate-unit-tests-jobs.outputs.k8sMatrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Run unit tests
+        env:
+          ENVTEST_K8S_VERSION: ${{ matrix.k8s-version }}
+        run: |
+          make test
+
+      - name: Coverage Summary
+        if: matrix.k8s-version == needs.generate-unit-tests-jobs.outputs.latest_k8s_version
+        run: |
+          go tool cover -func=cover.out -o coverage.out
+
+      - name: Publish unit test summary on the latest k8s version
+        if: matrix.k8s-version == needs.generate-unit-tests-jobs.outputs.latest_k8s_version
+        run: |
+          echo "Unit test coverage: $(tail -n 1 coverage.out | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
+
+  apidoc:
+    name: Verify API doc is up to date
+    needs:
+      - duplicate_runs
+      - change-triage
+    # Run make apidoc if Go code or docs have changed
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      (
+        needs.change-triage.outputs.go-code-changed == 'true' ||
+        needs.change-triage.outputs.docs-changed == 'true'
+      )
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Run make apidoc
+        run: |
+          make apidoc
+
+      - name: Verify apidoc changes
+        run: |
+          apidoc_file_path='docs/src/${{ env.API_DOC_NAME }}'
+          if git status --porcelain $apidoc_file_path | grep '^ M'; then
+            echo "The API documentation doesn't reflect the current API. Please run make apidoc."
+            exit 1
+          fi
+
+  crd:
+    name: Verify CRD is up to date
+    needs:
+      - duplicate_runs
+      - change-triage
+    # Run make manifests if Go code have changed
+    if: |
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      (
+        needs.change-triage.outputs.go-code-changed == 'true' ||
+        needs.change-triage.outputs.operator-changed == 'true'
+      )
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Run make manifests
+        run: |
+          make manifests
+
+      - name: Check CRD manifests are up to date
+        run: |
+          crd_path='config/crd'
+          if git status --porcelain $crd_path | grep '^ M'; then
+            echo "The CRD manifests do not reflect the current API. Please run make manifests."
+            exit 1
+          fi
+
+  buildx:
+    name: Build containers
+    needs:
+      - go-linters
+      - shellcheck
+      - tests
+      - apidoc
+      - crd
+      - duplicate_runs
+      - change-triage
+    # Build containers:
+    #   if there have been any code changes OR it is a scheduled execution
+    #   AND
+    #   none of the preceding jobs failed
+    if: |
+      (always() && !cancelled()) &&
+      (
+        needs.duplicate_runs.outputs.should_skip != 'true' &&
+        (
+          needs.change-triage.outputs.operator-changed == 'true' ||
+          needs.change-triage.outputs.test-changed == 'true' ||
+          needs.change-triage.outputs.shell-script-changed == 'true' ||
+          needs.change-triage.outputs.go-code-changed == 'true'
+        )
+      ) &&
+      (needs.go-linters.result == 'success' || needs.go-linters.result == 'skipped') &&
+      (needs.shellcheck.result == 'success' || needs.shellcheck.result == 'skipped') &&
+      (needs.tests.result == 'success' || needs.tests.result == 'skipped') &&
+      (needs.apidoc.result == 'success' || needs.apidoc.result == 'skipped') &&
+      (needs.crd.result == 'success' || needs.crd.result == 'skipped')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
+    outputs:
+      commit_version: ${{ env.VERSION }}
+      commit: ${{ env.COMMIT_SHA }}
+      controller_img: ${{ env.CONTROLLER_IMG }}
+      controller_img_ubi: ${{ env.CONTROLLER_IMG_UBI }}
+      bundle_img: ${{ env.BUNDLE_IMG }}
+      catalog_img: ${{ env.CATALOG_IMG }}
+      push: ${{ env.PUSH }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # To identify the commit we need the history and all the tags.
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Build meta
+        id: build-meta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          commit_sha=${{ github.event.pull_request.head.sha || github.sha }}
+          commit_date=$(git log -1 --pretty=format:'%ad' --date short "${commit_sha}" || : )
+
+          # use git describe to get the nearest tag and use that to build the version (e.g. 1.4.0-dev24 or 1.4.0)
+          commit_version=$(git describe --tags --match 'v*' "${commit_sha}"| sed -e 's/^v//; s/-g[0-9a-f]\+$//; s/-\([0-9]\+\)$/-dev\1/')
+
+          # shortened commit sha
+          commit_short=$(git rev-parse --short "${commit_sha}")
+
+          # extract branch name
+          branch_name=${GITHUB_REF#refs/heads/}
+          if [[ ${{ github.event_name }} == 'pull_request' ]]
+          then
+            branch_name=$(gh pr view "${{ github.event.pull_request.number }}" --json headRefName -q '.headRefName' 2>/dev/null)
+          fi
+
+          # extract tag from branch name
+          tag_name=$(echo "$branch_name" | tr / -)
+
+          echo "DATE=${commit_date}" >> $GITHUB_ENV
+          echo "VERSION=${commit_version}" >> $GITHUB_ENV
+          echo "COMMIT=${commit_short}" >> $GITHUB_ENV
+          echo "COMMIT_SHA=${commit_sha}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${tag_name,,}" >> $GITHUB_ENV
+          echo "REPO_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+          # By default the container image is being pushed to the registry
+          echo "PUSH=true" >> $GITHUB_ENV
+
+      # GITHUB_TOKEN has restricted permissions if the pull_request has been opened
+      # from a forked repository, so we avoid pushing to the container registry if
+      # that's the case.
+      - name: Evaluate container image push
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [[ "${{ env.HEAD_REPO }}" != "${{ env.BASE_REPO }}" ]]
+          then
+            echo "PUSH=false" >> $GITHUB_ENV
+          fi
+
+      - name: Set GoReleaser environment
+        run: |
+          echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
+          echo PWD=$(pwd) >> $GITHUB_ENV
+
+      - name: Run GoReleaser to build kubectl plugin
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        if: |
+          github.event_name == 'schedule' ||
+          (
+            github.event_name == 'workflow_dispatch' &&
+            startsWith(github.head_ref, 'release-') ||
+            startsWith(github.ref_name, 'release-')
+          )
+        with:
+          distribution: goreleaser
+          version: v2
+          args: ${{ env.BUILD_PLUGIN_RELEASE_ARGS }}
+        env:
+          DATE: ${{ env.DATE }}
+          COMMIT: ${{ env.COMMIT }}
+          VERSION: ${{ env.VERSION }}
+
+      # Send Slack notification if the kubectl plugin build fails.
+      # To avoid message overflow, we only report runs scheduled on main or release branches
+      - name: Slack Notification
+        uses: rtCamp/action-slack-notify@e31e87e03dd19038e411e38ae27cbad084a90661 # v2
+        if: |
+          failure() &&
+          github.repository_owner == env.REPOSITORY_OWNER &&
+          (
+            github.event_name == 'schedule' ||
+            (
+              github.event_name == 'workflow_dispatch' &&
+              startsWith(github.head_ref, 'release-') ||
+              startsWith(github.ref_name, 'release-')
+            )
+          )
+        env:
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_ICON: https://avatars.githubusercontent.com/u/85171364?size=48
+          SLACK_USERNAME: ${{ env.SLACK_USERNAME }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_MESSAGE: Building kubernetes plugin failed!
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser
+          version: v2
+          args: ${{ env.BUILD_MANAGER_RELEASE_ARGS }}
+        env:
+          DATE: ${{ env.DATE }}
+          COMMIT: ${{ env.COMMIT }}
+          VERSION: ${{ env.VERSION }}
+          RACE: "true"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: ${{ env.PLATFORMS }}
+          cache-image: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login into docker registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
+        id: bake-push
+        env:
+          BUILDX_METADATA_PROVENANCE: disabled
+          environment: "testing"
+          buildVersion: ${{ env.VERSION }}
+          tag: ${{ env.IMAGE_TAG }}
+          registry: ${{ env.REGISTRY }}/${{ env.REPO_OWNER }}
+          revision: ${{ env.COMMIT }}
+        with:
+          source: .
+          push: ${{ env.PUSH }}
+          no-cache: true
+          targets: "default"
+
+      - name: Output images
+        if: env.PUSH == 'true'
+        env:
+          DISTROLESS: ${{ fromJSON(steps.bake-push.outputs.metadata)['distroless']['image.name'] }}
+          UBI: ${{ fromJSON(steps.bake-push.outputs.metadata)['ubi']['image.name'] }}
+        run: |
+          echo "CONTROLLER_IMG=${DISTROLESS}" >> $GITHUB_ENV
+          echo "CONTROLLER_IMG_UBI=${UBI}" >> $GITHUB_ENV
+          echo "BUNDLE_IMG=${UBI}-bundle" >> $GITHUB_ENV
+          echo "CATALOG_IMG=${UBI}-catalog" >> $GITHUB_ENV
+
+      - name: Dockle scan distroless image
+        uses: erzz/dockle-action@69369bc745ee29813f730231a821bcd4f71cd290 # v1
+        if: env.PUSH == 'true'
+        with:
+          image: ${{ env.CONTROLLER_IMG }}
+          exit-code: '1'
+          failure-threshold: WARN
+          accept-keywords: key
+
+      - name: Dockle scan UBI image
+        uses: erzz/dockle-action@69369bc745ee29813f730231a821bcd4f71cd290 # v1
+        if: env.PUSH == 'true'
+        env:
+          DOCKLE_IGNORES: CIS-DI-0009
+        with:
+          image: ${{ env.CONTROLLER_IMG_UBI }}
+          exit-code: '1'
+          failure-threshold: WARN
+          accept-keywords: key
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04 # master
+        if: |
+          !github.event.repository.fork &&
+          !github.event.pull_request.head.repo.fork
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: ${{ env.CONTROLLER_IMG }}
+          args: --severity-threshold=high --file=Dockerfile --username=${{ env.REGISTRY_USER }} --password=${{ env.REGISTRY_PASSWORD }}
+
+      - name: Install cosign
+        if: |
+          env.SIGN_IMAGES == 'true' &&
+          env.PUSH == 'true'
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        # See https://github.blog/security/supply-chain-security/safeguard-container-signing-capability-actions/
+        # and https://github.com/actions/starter-workflows/blob/main/ci/docker-publish.yml for more details on
+        # how to use cosign.
+
+      - name: Sign images
+        if: |
+          env.SIGN_IMAGES == 'true' &&
+          env.PUSH == 'true'
+        run: |
+          images=$(echo '${{ steps.bake-push.outputs.metadata }}' |
+            jq -r '.[] | (."image.name" | sub(",.*";"" )) + "@" + ."containerimage.digest"'
+          )
+          cosign sign --yes ${images}
+
+
+  olm-bundle:
+    name: Create OLM bundle and catalog
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    needs:
+      - buildx
+    if: |
+      (always() && !cancelled()) &&
+      needs.buildx.result == 'success' &&
+      needs.buildx.outputs.push == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.buildx.outputs.commit }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: ${{ env.PLATFORMS }}
+          cache-image: false
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login into docker registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Create bundle
+        env:
+          CONTROLLER_IMG: ${{ needs.buildx.outputs.controller_img_ubi }}
+          BUNDLE_IMG: ${{ needs.buildx.outputs.bundle_img }}
+          CATALOG_IMG: ${{ needs.buildx.outputs.catalog_img }}
+        run: |
+          make olm-catalog
+
+      - name: Archive the bundle manifests
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: bundle
+          path: |
+            bundle.Dockerfile
+            bundle/
+            cloudnative-pg-catalog.yaml
+          retention-days: 7
+
+  preflight:
+    name: Run openshift-preflight test
+    runs-on: ubuntu-24.04
+    needs:
+      - buildx
+      - olm-bundle
+    if: |
+      (always() && !cancelled()) &&
+      needs.olm-bundle.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Setup tools
+        run: |
+          make operator-sdk preflight
+
+      - name: Loging to container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Run preflight container test
+        env:
+          CONTROLLER_IMG: ${{ needs.buildx.outputs.controller_img_ubi }}
+          PFLT_ARTIFACTS: "preflight_results"
+        run: |
+          bin/preflight check container ${CONTROLLER_IMG} \
+          --docker-config $HOME/.docker/config.json
+
+      - name: Archive the preflight results
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: preflight_results
+          path: |
+            preflight_results
+          retention-days: 7
+
+      - name: Check preflight container results
+        run: |
+          for dir in `ls preflight_results`; do
+              PASS=`jq -r .passed preflight_results/$dir/results.json`
+              if [[ "$PASS" == "false" ]]
+              then
+                exit 1
+              fi
+          done
+
+  olm-scorecard:
+    name: Run OLM scorecard test
+    runs-on: ubuntu-24.04
+    needs:
+      - buildx
+      - olm-bundle
+    if: |
+      (always() && !cancelled()) &&
+      needs.olm-bundle.result == 'success' &&
+      github.repository_owner == 'cloudnative-pg'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setting up KinD cluster
+        uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
+        with:
+          wait: "600s"
+          version: ${{ env.KIND_VERSION }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: ${{ env.PLATFORMS }}
+          cache-image: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login into docker registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Install Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+
+      - name: Running Scorecard tests
+        env:
+          BUNDLE_IMG: ${{ needs.buildx.outputs.bundle_img }}
+        run: |
+          make olm-scorecard
+
+  olm-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [ kiwi, lemon, orange ]
+    name: Run OLM ${{ matrix.test }} test
+    runs-on: ubuntu-24.04
+    needs:
+      - buildx
+      - olm-bundle
+    if: |
+      (always() && !cancelled()) &&
+      needs.olm-bundle.result == 'success' &&
+      github.repository_owner == 'cloudnative-pg'
+    env:
+      VERSION: ${{ needs.buildx.outputs.commit_version }}
+      OPP_DEBUG: 1
+      OPP_PRODUCTION_TYPE: "k8s"
+      OPP_CONTAINER_OPT: "-t"
+      OPP_RELEASE_INDEX_NAME: "catalog_tmp"
+    steps:
+      - name: Checkout community-operators
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: k8s-operatorhub/community-operators
+          persist-credentials: false
+
+      - name: Login into docker registry
+        uses: redhat-actions/podman-login@4934294ad0449894bcd1e9f191899d7292469603 # v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Download the bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: bundle
+
+      - name: Copy bundle in the community-operators
+        run: |
+          mkdir -p "operators/cloudnative-pg/${{ env.VERSION }}"
+          cp -R bundle/* "operators/cloudnative-pg/${{ env.VERSION }}"
+          rm -fr bundle.Dockerfile *.zip bundle/
+
+      - name: Test bundle
+        run: |
+          bash <(curl -sL ${{ env.OPP_SCRIPT_URL }}) ${{ matrix.test }} operators/cloudnative-pg/${{ env.VERSION }}/

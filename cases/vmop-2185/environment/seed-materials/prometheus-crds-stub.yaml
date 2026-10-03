@@ -1,0 +1,150 @@
+# monitoring.coreos.com 的 6 个 schema-stub CRD —— 不是装 prometheus-operator,
+# 只是让这 6 个 GVK「存在」。本案算子(v0.69.0 / srcbuggy-2132 build)启动时
+# internal/manager/manager.go:initControllers() 会去 discovery 问
+# monitoring.coreos.com/v1 与 .../v1alpha1;**整个 groupVersion 不存在时**它走
+# `continue`,没把这组控制器塞进 disabledControllerNames ⇒ 6 个 prom* 控制器照旧
+# 启用 ⇒ controller-runtime source.Kind 解析不出 GVK ⇒ mgr.Start() 返回错误 ⇒
+# cmd/main.go 退出 ⇒ :8081 不再应答 ⇒ liveness(15s+20s*3)杀掉容器 ⇒ 约 90 秒
+# 一圈重启。后果:健康相位(k=0)快照带 restarts=2 + BackOff + 6 种 kind × 十几行
+# `no matches for kind`,agent 为「不是它注入的故障」白吃一笔 k=0 假警报。
+# v1 组:ServiceMonitor / PodMonitor / Probe / PrometheusRule;
+# v1alpha1 组:ScrapeConfig / AlertmanagerConfig。
+# schema 一律 x-kubernetes-preserve-unknown-fields(本 env 里这些 kind 一个对象
+# 都没有,stub 只用于满足启动期的存在性判定)。先例:logop-2172 的
+# prometheus-crds-minimal.yaml。2026-09-23 为 vmop-2185 / vmop-2132 落,
+# 配套要求 seed-config.json 的 pre_manifests 引到本文件(pre 相位、算子之前)。
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: servicemonitors.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: servicemonitors
+    singular: servicemonitor
+    kind: ServiceMonitor
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: podmonitors.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: podmonitors
+    singular: podmonitor
+    kind: PodMonitor
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: probes.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: probes
+    singular: probe
+    kind: Probe
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: prometheusrules.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: prometheusrules
+    singular: prometheusrule
+    kind: PrometheusRule
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: scrapeconfigs.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: scrapeconfigs
+    singular: scrapeconfig
+    kind: ScrapeConfig
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: alertmanagerconfigs.monitoring.coreos.com
+  annotations:
+    api-approved.kubernetes.io: "https://github.com/prometheus-operator/prometheus-operator"
+spec:
+  group: monitoring.coreos.com
+  scope: Namespaced
+  names:
+    plural: alertmanagerconfigs
+    singular: alertmanagerconfig
+    kind: AlertmanagerConfig
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true

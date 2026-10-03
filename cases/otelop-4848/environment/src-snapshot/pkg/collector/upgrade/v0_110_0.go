@@ -1,0 +1,14 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package upgrade
+
+import (
+	"github.com/open-telemetry/opentelemetry-operator/apis/v1beta1"
+)
+
+func upgrade0_110_0(_ VersionUpgrade, otelcol *v1beta1.OpenTelemetryCollector) (*v1beta1.OpenTelemetryCollector, error) {
+	envVarExpansionFeatureFlag := "-component.UseLocalHostAsDefaultHost"
+	otelcol.Spec.Args = RemoveFeatureGate(otelcol.Spec.Args, envVarExpansionFeatureFlag)
+	return otelcol, nil
+}

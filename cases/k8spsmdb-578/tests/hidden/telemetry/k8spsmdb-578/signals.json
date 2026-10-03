@@ -1,0 +1,29 @@
+{
+ "case": "k8spsmdb-578",
+ "confirmed": [
+  {
+   "kind": "object_secrets",
+   "target": "default/mongodb-cluster-ssl-internal",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": false,
+    "fixed": true
+   },
+   "note": "ssl-internal \u7f3a\u5931;\u8f85\u8bc1 buggy previous mongod \u5d29\u6e83\u65e5\u5fd7 3 \u4efd"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "undefined state of the replset member",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 5,
+    "fixed": 0
+   },
+   "note": "\u6b63\u5411\u4f34\u968f\u817f(operator \u5bb9\u5668\u65e5\u5fd7 error \u5b57\u6bb5;buggy 5/fixed 0 raw \u590d\u6838);\u540c\u6279 dial:: failed to ping mongo(buggy 3/fixed 0)\u4e3a\u540c\u56e0\u4f50\u8bc1,\u4e0d\u518d\u5355\u5217"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,67 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - dupl
+    - ginkgolinter
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - importas
+    - gocritic
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - lll
+        path: api/*
+      - linters:
+          - dupl
+          - lll
+        path: internal/*
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+  settings:
+    importas:
+      no-unaliased: true
+      alias:
+        - pkg: github.com/VictoriaMetrics/operator/api/operator/v1alpha1
+          alias: vmv1alpha1
+        - pkg: github.com/VictoriaMetrics/operator/api/operator/v1beta1
+          alias: vmv1beta1
+        - pkg: github.com/VictoriaMetrics/operator/api/operator/v1
+          alias: vmv1
+        - pkg: k8s.io/api/core/v1
+          alias: corev1
+        - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+          alias: metav1
+        - pkg: k8s.io/api/apps/v1
+          alias: appsv1
+        - pkg: k8s.io/api/autoscaling/v2"
+          alias: autoscalingv2
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gci
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/VictoriaMetrics/operator)

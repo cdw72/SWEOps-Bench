@@ -1,0 +1,108 @@
+{
+  "case_id": "knop-2233",
+  "k8s_version": "v1.23",
+  "operator_bundle": "operator.yaml",
+  "operator_ready": [
+    "-n knative-operator get deploy knative-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "operator_v1beta1_knativeserving.yaml",
+      "ns": "knative-serving",
+      "wait": [
+        [
+          "get pods -o jsonpath={.items[*].status.containerStatuses[*].state.waiting.reason}",
+          "CrashLoopBackOff"
+        ]
+      ],
+      "timeout": 900,
+      "settle": 60
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n knative-serving logs deploy/controller --tail=200",
+      "not compatible, need at least"
+    ],
+    [
+      "-n knative-serving get pods -o jsonpath={.items[*].status.containerStatuses[*].state.waiting.reason}",
+      "CrashLoopBackOff"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "knative-serving"
+  ],
+  "pre_manifests": [
+    "operator.knative.dev_knativeeventings.yaml",
+    "operator.knative.dev_knativeservings.yaml",
+    "000-namespace.yaml",
+    "200-service_account.yaml",
+    "200-clusterrole_aggregated.yaml",
+    "200-role.yaml",
+    "201-role_binding.yaml",
+    "204-clusterrole_aggregated_binding.yaml",
+    "metrics-server.yaml"
+  ],
+  "pre_ready": [
+    [
+      "wait --for=condition=Established crd/knativeservings.operator.knative.dev --timeout=120s",
+      "condition met"
+    ],
+    [
+      "get deploy -n kube-system metrics-server",
+      "1/1"
+    ],
+    [
+      "get apiservice v1beta1.metrics.k8s.io",
+      "True"
+    ]
+  ],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "knative-serving",
+      "wait": [
+        [
+          "wait --for=condition=Ready knativeserving/knative-serving --timeout=600s",
+          "condition met"
+        ],
+        [
+          "wait --for=condition=Available deploy/activator --timeout=600s",
+          "condition met"
+        ],
+        [
+          "wait --for=condition=Available deploy/autoscaler --timeout=600s",
+          "condition met"
+        ],
+        [
+          "wait --for=condition=Available deploy/controller --timeout=600s",
+          "condition met"
+        ],
+        [
+          "wait --for=condition=Available deploy/webhook --timeout=600s",
+          "condition met"
+        ],
+        [
+          "wait --for=condition=Available deploy/autoscaler-hpa --timeout=600s",
+          "condition met"
+        ]
+      ],
+      "timeout": 700,
+      "settle": 60
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "knative-serving",
+      "apply",
+      "-f",
+      "/seed-data/operator_v1beta1_knativeserving.yaml"
+    ]
+  ],
+  "poll_fault_settle": 300
+}

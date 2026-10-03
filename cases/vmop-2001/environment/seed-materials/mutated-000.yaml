@@ -1,0 +1,22 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+  namespace: default
+spec:
+  shardCount: 1
+  statefulMode: true
+  image:
+    repository: victoriametrics/vmagent
+    tag: v1.129.0
+  remoteWrite:
+  - url: "http://vmsingle-vmsingle-2384.default.svc:8429/api/v1/write"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: shard-num
+            operator: In
+            values: ["%SHARD_NUM%"]
+        topologyKey: kubernetes.io/hostname

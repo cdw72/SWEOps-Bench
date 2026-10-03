@@ -1,0 +1,38 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "cnpg-system",
+    "get",
+    "deploy",
+    "cnpg-controller-manager"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/manager",
+   "./cmd/manager"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/manager",
+    "/manager"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "cnpg-system/cnpg-controller-manager"
+ },
+ "settle": 120,
+ "slug": "cnpgop"
+}

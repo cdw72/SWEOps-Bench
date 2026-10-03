@@ -1,0 +1,131 @@
+name: Publish OperatorHub release
+
+on:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+
+permissions: {}
+
+jobs:
+  update:
+    name: Publish new OperatorHub release
+    runs-on:  vm-runner
+    if: ${{ (github.event.workflow_run.conclusion == 'success' && ! contains(github.event.workflow_run.head_branch, '-')) || github.event_name == 'workflow_dispatch' && github.event.workflow_run.release != 'prereleased' }}
+    strategy:
+      matrix:
+        repo:
+          - fork: VictoriaMetrics/operatorhub-operators
+            upstream: k8s-operatorhub/community-operators
+          - fork: VictoriaMetrics/openshift-community-operators-prod
+            upstream: redhat-openshift-ecosystem/community-operators-prod
+          - fork: VictoriaMetrics/openshift-certified-operators
+            upstream: redhat-openshift-ecosystem/certified-operators
+    steps:
+      - name: Sync forks
+        run: |
+          gh repo sync ${{ matrix.repo.fork }}
+        env:
+          GH_TOKEN: ${{ secrets.VM_BOT_GH_TOKEN }}
+
+      - name: Check out OperatorHub operators repo fork
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          repository: ${{ matrix.repo.upstream }}
+          ref: main
+          token: ${{ secrets.VM_BOT_GH_TOKEN }}
+          path: __operatorhub-repo
+          persist-credentials: false
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd  # v7.0.0
+        id: import-gpg
+        with:
+          gpg_private_key: ${{ secrets.VM_BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.VM_BOT_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          workdir: __operatorhub-repo
+
+      - name: Download OLM bundle
+        run: |
+          gh release download "$RELEASE_TAG" --pattern olm-bundle.tar.gz --dir .
+          mkdir -p bundle
+          tar -xzf olm-bundle.tar.gz -C bundle
+        env:
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          GH_TOKEN: ${{ secrets.VM_BOT_GH_TOKEN }}
+
+      - name: Set channel
+        run: |
+          echo "CHANNEL=$(cat bundle/CHANNEL 2>/dev/null || echo beta)" >> $GITHUB_ENV
+          rm -f bundle/CHANNEL
+
+      - name: Add operatorhub bundle
+        id: update
+        run: |
+          if [ ! -d bundle ]; then
+            echo "No bundle directory found"
+            exit 1
+          fi
+
+          export OPERATOR_NAME="victoriametrics-operator"
+          export OPERATOR_DIR=__operatorhub-repo/operators/${OPERATOR_NAME}
+          mkdir -p ${OPERATOR_DIR}
+
+          export NEW_VERSION=$(ls bundle | head -1)
+          export OLD_VERSION=$(
+            { find ${OPERATOR_DIR}/* ! -path "*/catalog-templates" -maxdepth 0 -type d -exec basename {} \;
+              echo "${NEW_VERSION}"
+            } | sort -V | grep -B1 "^${NEW_VERSION}$" | grep -v "^${NEW_VERSION}$"
+          )
+          export OLD_ENTRY="${OPERATOR_NAME}.v${OLD_VERSION}"
+          export MANIFEST_PATH=bundle/${NEW_VERSION}/manifests/victoriametrics-operator.clusterserviceversion.yaml
+
+          if [ ! -z $OLD_VERSION ]; then
+            yq -i '.spec.replaces = "victoriametrics-operator.v" + strenv(OLD_VERSION)' $MANIFEST_PATH
+          fi
+
+          if [ ! -z $MANIFEST_PATH ]; then
+            yq -i '.metadata["operators.operatorframework.io.bundle.channel.default.v1"] = strenv(CHANNEL)' $MANIFEST_PATH
+            yq -i '.metadata["operators.operatorframework.io.bundle.channels.v1"] = strenv(CHANNEL)' $MANIFEST_PATH
+            yq -i '.annotations["operators.operatorframework.io.bundle.channel.default.v1"] = strenv(CHANNEL)' bundle/${NEW_VERSION}/metadata/annotations.yaml
+            yq -i '.annotations["operators.operatorframework.io.bundle.channels.v1"] = strenv(CHANNEL)' bundle/${NEW_VERSION}/metadata/annotations.yaml
+          fi
+
+          mv bundle/${NEW_VERSION} ${OPERATOR_DIR}/
+          if [ -f ${OPERATOR_DIR}/Makefile ]; then
+            yq -n '.catalog_templates = []' > ${OPERATOR_DIR}/${NEW_VERSION}/release-config.yaml
+            for TEMPLATE in ${OPERATOR_DIR}/catalog-templates/*.yaml; do
+              export TPL=$(basename ${TEMPLATE})
+              if [ "$CHANNEL" = "stable" ] && ! yq -e '.entries[] | select(.schema == "olm.channel" and .name == "stable")' "$TEMPLATE" > /dev/null 2>&1 && [ -n "$OLD_VERSION" ]; then
+                yq -i '.catalog_templates += [{"template_name": strenv(TPL), "channels": ["stable"], "replaces": strenv(OLD_ENTRY)}]' ${OPERATOR_DIR}/${NEW_VERSION}/release-config.yaml
+              elif [ -n "$OLD_VERSION" ]; then
+                yq -i '.catalog_templates += [{"template_name": strenv(TPL), "channels": [strenv(CHANNEL)], "replaces": strenv(OLD_ENTRY)}]' ${OPERATOR_DIR}/${NEW_VERSION}/release-config.yaml
+              else
+                yq -i '.catalog_templates += [{"template_name": strenv(TPL), "channels": [strenv(CHANNEL)]}]' ${OPERATOR_DIR}/${NEW_VERSION}/release-config.yaml
+              fi
+            done
+          fi
+
+          echo "VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        if: ${{ steps.update.outputs.VERSION != '' }}
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          add-paths: operators/victoriametrics-operator
+          commit-message: 'victoriametrics-operator: ${{ steps.update.outputs.VERSION }}'
+          signoff: true
+          committer: "Github Actions <${{ steps.import-gpg.outputs.email }}>"
+          path: __operatorhub-repo
+          push-to-fork: ${{ matrix.repo.fork }}
+          branch: vm-operator-release-${{ steps.update.outputs.VERSION }}
+          token: ${{ secrets.VM_BOT_GH_TOKEN }}
+          delete-branch: true
+          title: 'victoriametrics-operator: (${{ steps.update.outputs.VERSION }})'
+          body: |
+            Added OLM package for [VictoriaMetrics operator ${{ steps.update.outputs.VERSION }}](https://github.com/VictoriaMetrics/operator/releases/tag/v${{ steps.update.outputs.VERSION }})
+            > Auto-generated by `Github Actions Bot`

@@ -1,0 +1,37 @@
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  name: redis-replication
+spec:
+  sentinel:
+    size: 3
+    image: quay.io/opstree/redis-sentinel:latest
+    imagePullPolicy: Always
+  clusterSize: 3
+  redisConfig:
+    maxMemoryPercentOfLimit: 80
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+  kubernetesConfig:
+    image: quay.io/opstree/redis:latest
+    imagePullPolicy: Always
+    resources:
+      requests:
+        cpu: 101m
+        memory: 128Mi
+      limits:
+        cpu: 101m
+        memory: 128Mi
+    redisSecret:
+      name: redis-secret
+      # Opstree1234
+      key: password
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,0 +1,60 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "default",
+    "get",
+    "deploy",
+    "zookeeper-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "CGO_ENABLED=0",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/zookeeper-operator",
+   "-ldflags",
+   "-X github.com/pravega/zookeeper-operator/pkg/version.Version=0.2.13 -X github.com/pravega/zookeeper-operator/pkg/version.GitSHA=cda03d2f27",
+   "./cmd/manager"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/zookeeper-operator",
+    "/usr/local/bin/zookeeper-operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "default/zookeeper-operator"
+ },
+ "settle": 120,
+ "slug": "zkop-314",
+ "rearm": [
+  [
+   "-n",
+   "default",
+   "patch",
+   "sts",
+   "zookeeper-cluster",
+   "--type=merge",
+   "-p",
+   "{\"metadata\":{\"labels\":{\"owner-rv\":\"9999999999\"}},\"spec\":{\"replicas\":2}}"
+  ],
+  [
+   "-n",
+   "default",
+   "rollout",
+   "restart",
+   "deploy/zookeeper-operator"
+  ]
+ ],
+ "rearm_settle": 150
+}

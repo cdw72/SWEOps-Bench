@@ -1,0 +1,188 @@
+name: "Reusable End-to-end tests"
+
+on:
+  workflow_call:
+    inputs:
+      collector-image:
+        description: "Collector image to use for tests"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_ARCHIVE_FILENAME: images.tar
+  VERSION: e2e
+
+jobs:
+  build-test-images:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Set up Go
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      id: setup-go
+      with:
+        go-version: "~1.25.7"
+
+    - name: Cache tools
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: bin
+        key: tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}-${{ steps.setup-go.outputs.go-version }}
+
+    - name: Install tools
+      run: make install-tools
+
+    - name: Build test image archive
+      run: make container-image-archive IMAGE_ARCHIVE=${IMAGE_ARCHIVE_FILENAME} VERSION=${VERSION}
+
+    - name: Upload test image archive
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: Test image archive
+        path: ${{ env.IMAGE_ARCHIVE_FILENAME }}
+        if-no-files-found: 'error'
+        retention-days: 1
+        overwrite: true
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: [ build-test-images ]
+    strategy:
+      fail-fast: false
+      matrix:
+        # The e2e tests are run on the lowest and highest supported k8s version.
+        # All Kubernetes version in between expose the same APIs, hence the operator
+        # should be compatible with them.
+        kube-version:
+        - "1.25"
+        - "1.35"
+        group:
+        - e2e
+        - e2e-automatic-rbac
+        - e2e-autoscale
+        - e2e-instrumentation-default
+        - e2e-instrumentation
+        - e2e-opampbridge
+        - e2e-pdb
+        - e2e-prometheuscr
+        - e2e-sidecar
+        - e2e-targetallocator
+        - e2e-targetallocator-cr
+        # https://github.com/open-telemetry/opentelemetry-operator/issues/4887
+        # - e2e-upgrade
+        - e2e-multi-instrumentation-default
+        - e2e-multi-instrumentation
+        - e2e-metadata-filters
+        - e2e-ta-collector-mtls
+        - e2e-crd-validations
+        include:
+        - group: e2e-instrumentation-default
+          setup: "add-instrumentation-params prepare-e2e"
+        - group: e2e-instrumentation
+          setup: "add-instrumentation-params add-instrumentation-images prepare-e2e"
+        - group: e2e-multi-instrumentation-default
+          setup: "add-instrumentation-params prepare-e2e"
+        - group: e2e-multi-instrumentation
+          setup: "add-instrumentation-params add-instrumentation-images prepare-e2e"
+        - group: e2e-metadata-filters
+          setup: "add-operator-arg OPERATOR_ARG='--annotations-filter=.*filter.out --annotations-filter=config.*.gke.io.* --labels-filter=.*filter.out' prepare-e2e"
+        - group: e2e-ta-collector-mtls
+          setup: "add-operator-arg OPERATOR_ARG='--feature-gates=operator.targetallocator.mtls' add-certmanager-permissions prepare-e2e"
+        - group: e2e-automatic-rbac
+          setup: "add-rbac-permissions-to-operator prepare-e2e"
+
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Set up Go
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      id: setup-go
+      with:
+        go-version: "~1.25.7"
+
+    - name: Cache tools
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: bin
+        key: tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}-${{ steps.setup-go.outputs.go-version }}
+
+    - name: Install tools
+      run: make install-tools
+
+    - name: Download test image archive
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: Test image archive
+
+    - name: Prepare e2e tests
+      env:
+        KUBE_VERSION: ${{ matrix.kube-version }}
+        COLLECTOR_IMG: ${{ inputs.collector-image }}
+        SETUP_COMMANDS: ${{ matrix.setup != '' && matrix.setup || 'prepare-e2e' }}
+      run: |
+        set -e
+        if [ -n "${COLLECTOR_IMG}" ]; then
+          export SETUP_COMMANDS="add-image-collector COLLECTOR_IMG=${COLLECTOR_IMG} ${SETUP_COMMANDS}"
+        fi
+        eval "make ${SETUP_COMMANDS} KUBE_VERSION=$KUBE_VERSION VERSION=$VERSION IMAGE_ARCHIVE=$IMAGE_ARCHIVE_FILENAME"
+    - name: Run e2e tests
+      env:
+        KUBE_VERSION: ${{ matrix.kube-version }}
+      run: |
+        set -e
+        make ${{ matrix.group }}
+    - name: "log operator if failed"
+      if: ${{ failure() }}
+      env:
+        KUBE_VERSION: ${{ matrix.kube-version }}
+      run: |
+        set -e
+        make e2e-log-operator KUBE_VERSION=$KUBE_VERSION
+    - name: Upload test results
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      if: always()
+      with:
+        path: .testresults/e2e/*.xml
+        name: e2e-junit-${{ matrix.group }}-${{ matrix.kube-version }}
+        retention-days: 7
+        overwrite: true
+
+  e2e-tests-check:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [e2e-tests]
+    outputs:
+      result: ${{ needs.e2e-tests.result }}
+    steps:
+      - name: Print result
+        run: echo ${{ needs.e2e-tests.result }}
+      - name: Interpret result
+        run: |
+          if [[ success == ${{ needs.e2e-tests.result }} ]]
+          then
+            echo "All matrix jobs passed!"
+          else
+            echo "One or more matrix jobs failed."
+            false
+          fi
+  # This event file is used by the JUnit report action in e2e-junit-report.yaml
+  event_file:
+    name: "Event File"
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Upload
+      uses: actions/upload-artifact@v7.0.0
+      with:
+        name: Event File
+        path: ${{ github.event_path }}
+        overwrite: true

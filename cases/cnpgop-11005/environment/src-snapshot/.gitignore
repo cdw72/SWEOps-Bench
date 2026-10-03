@@ -1,0 +1,39 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/testbin/
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# editor and IDE paraphernalia
+.idea
+*.swp
+*.swo
+*~
+
+# Testing artifacts and logs
+_*/
+tests/e2e/out/
+tests/e2e/*_logs/
+
+# goreleaser
+/dist/
+*.asc
+
+# Spellcheck dictionary
+dictionary.dic
+
+# OLM ignores
+bundle/
+bundle.Dockerfile
+catalog
+catalog.Dockerfile
+cloudnative-pg-catalog.yaml

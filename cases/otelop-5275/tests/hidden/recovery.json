@@ -1,0 +1,42 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "opentelemetry-operator-system",
+    "get",
+    "pods",
+    "-l",
+    "app.kubernetes.io/name=opentelemetry-operator",
+    "-o",
+    "jsonpath={.items[0].status.phase}"
+   ],
+   "Running"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/manager",
+   "-trimpath",
+   "main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/manager",
+    "/manager"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "opentelemetry-operator-system/opentelemetry-operator-controller-manager"
+ },
+ "settle": 120,
+ "slug": "otelop-5275"
+}

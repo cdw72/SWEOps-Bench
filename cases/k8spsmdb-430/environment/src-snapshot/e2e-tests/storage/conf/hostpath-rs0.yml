@@ -1,0 +1,18 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: hostpath
+spec:
+  image:
+  mongod:
+    security:
+      enableEncryption: true
+  replsets:
+  - name: rs0
+    volumeSpec:
+      hostPath:
+        path: /run/data-dir
+        type: Directory
+    size: 3
+  secrets:
+    users: some-users

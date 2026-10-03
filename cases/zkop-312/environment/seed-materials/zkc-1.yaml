@@ -1,0 +1,26 @@
+# zkop-312 workload CR.
+#
+# Two edits to sieve's examples/zookeeper-operator/test/zkc-1.yaml, both for
+# the offline sandbox:
+#   * image tag pinned to what is in `images/`. The operator's own defaults are
+#     `pravega/zookeeper:0.2.8` + pullPolicy `Always`
+#     (zookeepercluster_types.go withDefaults), which in a network-less env is
+#     an ImagePullBackOff -- and that noise names a placeholder tag, so it
+#     lands in the events feed as a buggy-side-only Warning that has nothing to
+#     do with the bug (visible in telemetry/zkop-312's diff_report).
+#   * reclaimPolicy: Delete is NOT optional: reconcileFinalizers returns early
+#     (no finalizer, no PVC deletion) unless Persistence is set AND its
+#     VolumeReclaimPolicy is Delete. Drop it and the scene silently stops
+#     reproducing.
+apiVersion: zookeeper.pravega.io/v1beta1
+kind: ZookeeperCluster
+metadata:
+  name: zookeeper-cluster
+spec:
+  replicas: 1
+  image:
+    repository: pravega/zookeeper
+    tag: "0.2.14"
+    pullPolicy: IfNotPresent
+  persistence:
+    reclaimPolicy: Delete

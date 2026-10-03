@@ -1,0 +1,50 @@
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: promreceiver-nopromconfig
+spec:
+  mode: statefulset
+  targetAllocator:
+    enabled: true
+    serviceAccount: ta
+    prometheusCR:
+      enabled: true
+
+  config:
+    receivers:
+      jaeger:
+          protocols:
+            grpc:
+
+      prometheus:
+        config:
+          scrape_configs: []
+        target_allocator:
+          endpoint: http://promreceiver-nopromconfig-targetallocator
+          interval: 30s
+          collector_id: ${POD_NAME}
+          http_sd_config:
+            refresh_interval: 10s
+
+    exporters:
+      debug:
+    extensions:
+      health_check:
+        endpoint: "0.0.0.0:13133"
+    service:
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
+      extensions:
+        - health_check
+      pipelines:
+        traces:
+          receivers: [jaeger]
+          exporters: [debug]
+

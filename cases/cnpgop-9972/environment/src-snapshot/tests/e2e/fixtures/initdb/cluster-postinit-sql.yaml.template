@@ -1,0 +1,60 @@
+# Example of PostgreSQL cluster using ssl enabled
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: p-postinit-sql
+spec:
+  instances: 3
+
+  postgresql:
+    parameters:
+      work_mem: "8MB"
+      log_checkpoints: "on"
+      log_lock_waits: "on"
+      log_min_duration_statement: '1000'
+      log_statement: 'ddl'
+      log_temp_files: '1024'
+      log_autovacuum_min_duration: '1s'
+      log_replication_commands: 'on'
+    pg_hba:
+      - hostssl all all all cert
+
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      postInitSQL:
+        - create table sql (i integer)
+        - insert into sql (select generate_series(1,10000))
+      postInitTemplateSQL:
+        - create table template_sql (i integer)
+        - insert into template_sql (select generate_series(1,10000))
+      postInitApplicationSQL:
+        - create table application_sql (i integer)
+        - insert into application_sql (select generate_series(1,10000))
+      postInitSQLRefs:
+        configMapRefs:
+        - name: post-init-sql-configmap
+          key: configmap.sql
+        secretRefs:
+        - name: post-init-sql-secret
+          key: secret.sql
+      postInitTemplateSQLRefs:
+        configMapRefs:
+        - name: post-init-template-sql-configmap
+          key: configmap.sql
+        secretRefs:
+        - name: post-init-template-sql-secret
+          key: secret.sql
+      postInitApplicationSQLRefs:
+        configMapRefs:
+        - name: post-init-application-sql-configmap
+          key: configmap.sql
+        secretRefs:
+        - name: post-init-application-sql-secret
+          key: secret.sql
+
+  # Persistent storage configuration
+  storage:
+    storageClass: ${E2E_DEFAULT_STORAGE_CLASS}
+    size: 1Gi

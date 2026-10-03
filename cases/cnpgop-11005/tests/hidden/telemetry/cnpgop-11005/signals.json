@@ -1,0 +1,29 @@
+{
+ "case": "cnpgop-11005",
+ "confirmed": [
+  {
+   "kind": "cr_conditions",
+   "target": "clusters.postgresql.cnpg.io/repl",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "ConsistentSystemID=False;Initialized=True;Ready=False",
+    "fixed": "ConsistentSystemID=True;ContinuousArchiving=True;Initialized=True;Ready=True"
+   },
+   "note": "repl \u5361 bootstrap(buggy Ready=False + 3 \u4e2a pgbasebackup job Error)"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "exists but is not empty",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 3,
+    "fixed": 0
+   },
+   "note": "2026-09-10 \u8865:manager \u5bb9\u5668\u9010\u5b57 pg_basebackup: error: directory \"/var/lib/postgresql/data/pgdata\" exists but is not empty \u00d73(\u4e1a\u52a1\u4fa7,events/operator.log \u90fd\u6ca1\u6709;\u65e7\u53e3\u5f84\u6f0f)"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

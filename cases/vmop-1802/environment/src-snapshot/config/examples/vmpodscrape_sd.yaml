@@ -1,0 +1,31 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: annotations-discovery
+spec:
+  # use well-known kubernetes label for job
+  # otherwise any discovered target will have annotations-discovery as a job
+  jobLabel: "app.kubernetes.io/name"
+  podMetricsEndpoints:
+    - relabelConfigs:
+        # Skip scrape for init containers
+        - action: drop
+          source_labels: [__meta_kubernetes_pod_container_init]
+          regex: "true"
+        # Match container port with port from annotation
+        - action: keep_if_equal
+          source_labels:
+            [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_container_port_number]
+        # Check if scrape is enabled
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: "true"
+        # Set scrape path
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+        - source_labels: [__meta_kubernetes_pod_node_name]
+          action: replace
+          target_label: node
+  namespaceSelector: {} # You need to specify namespaceSelector here
+  selector: {} # You need to specify selector here

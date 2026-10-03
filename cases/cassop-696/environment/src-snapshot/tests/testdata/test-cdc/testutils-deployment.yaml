@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-testutil
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cdc-testutil
+  template:
+    metadata:
+      labels:
+        app: cdc-testutil
+    spec:
+      containers:
+      - name: testutils
+        args: ["/bin/sh", "-c", "while true; do sleep 100; done"]
+        image: k8ssandra/testutils:v0.0.2-SNAPSHOT

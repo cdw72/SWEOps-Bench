@@ -1,0 +1,67 @@
+{
+  "case_id": "knop-1137",
+  "k8s_version": "v1.23",
+  "operator_bundle": "operator-1.6.0.yaml",
+  "operator_ready": [
+    "-n knative-serving get deploy knative-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "knative-serving",
+      "wait": [
+        [
+          "get knativeserving test-cluster -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'",
+          "True"
+        ]
+      ],
+      "timeout": 600
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "knative-serving",
+      "settle": 300
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n knative-serving logs deploy/knative-operator --previous --tail=400",
+      "panic: runtime error: invalid memory address"
+    ],
+    [
+      "-n knative-serving logs deploy/knative-operator --previous --tail=400",
+      "nil pointer dereference"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "knative-serving"
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "knative-serving",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 300,
+  "pre_manifests": [
+    "metrics-server.yaml"
+  ],
+  "pre_ready": [
+    [
+      "get deploy -n kube-system metrics-server",
+      "1/1"
+    ],
+    [
+      "get apiservice v1beta1.metrics.k8s.io",
+      "True"
+    ]
+  ]
+}

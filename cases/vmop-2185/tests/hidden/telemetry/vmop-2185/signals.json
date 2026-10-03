@@ -1,0 +1,27 @@
+{
+ "case": "vmop-2185",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "undefined_receiver",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 21,
+    "fixed": 0
+   }
+  },
+  {
+   "kind": "sts_ready",
+   "target": "vmalertmanager-vmalertmanager",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "(\u65e0)",
+    "fixed": "1/1"
+   }
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

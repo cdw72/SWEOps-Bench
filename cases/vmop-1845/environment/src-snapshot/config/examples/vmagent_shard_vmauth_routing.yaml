@@ -1,0 +1,37 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: main
+spec:
+  selectAllByDefault: true
+  replicaCount: 1
+  statefulMode: true
+  shardCount: 2
+  extraArgs:
+    # adjust template domain name if needed
+    promscrape.cluster.memberURLTemplate: 'http://localhost:8427/vmagent/shard/%d/targets'
+  remoteWrite:
+    - url: "http://vmsingle-vms-victoria-metrics-k8s-stack.default.svc:8429/api/v1/write"
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAuth
+metadata:
+  name: expose-vmagent-ui
+spec:
+   selectAllByDefault: false
+   unauthorizedUserAccessSpec:
+     targetRefs:
+       # manually keep in sync shardCount and url_map entries per shard
+       - static:
+           url: http://vmagent-main-0-0.vmagent-main.default.svc:8429
+         paths: ["/vmagent/shard/0/.*"]
+         drop_src_path_prefix_parts: 3
+       - static:
+           url: http://vmagent-main-1-0.vmagent-main.default.svc:8429
+         paths: ["/vmagent/shard/1/.*"]
+         drop_src_path_prefix_parts: 3
+       - crd:
+           kind: VMAgent
+           name: main
+           namespace: default
+         paths: ["/*"]

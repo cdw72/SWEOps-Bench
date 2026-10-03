@@ -1,0 +1,81 @@
+# cassop-705 sandbox-fidelity CR (healthy baseline, mutated-000).
+#
+# The Acto capture was taken on a MULTI-node kind cluster, so the operator's
+# default per-rack pod anti-affinity (kubernetes.io/hostname, built by
+# calculatePodAntiAffinity when allowMultipleNodesPerWorker is false) let each
+# rack land on its own node. This env is a single-node k3s, where that
+# anti-affinity admits exactly ONE cassandra pod on the whole cluster: rack2 and
+# rack3 stayed Pending forever with
+#   FailedScheduling: 0/1 nodes available: node(s) didn't match pod anti-affinity
+# Measured on the 2026-09-19 lane-A run: the monitor snapshot fed exactly that
+# event to the agent in the PRE-INJECTION round, so the agent honestly reported a
+# fault before any fault existed and the round was graded a false alarm.
+# `allowMultipleNodesPerWorker: true` makes calculatePodAntiAffinity return nil
+# (construct_podtemplatespec.go:136) when no custom anti-affinity rules exist --
+# exactly the multi-node effect the corpus was recorded with. The fault mechanism
+# is untouched: it lives in the OPERATOR (a nil-map write on the config Secret,
+# reconcile_configsecret.go:93), not in the Cassandra cluster's readiness, so
+# three healthy racks change nothing about it.
+#
+# Mandatory companion to the flag: cassandradatacenter_webhook.go rejects the
+# CREATE unless requests AND limits are set for both cpu and memory
+# ("if using multiple nodes per worker, requests and limits should be set for
+# both cpu and memory"). The requests were already present; the limits are new.
+#
+# Heap MUST be pinned once a limit exists. The cassandra image's
+# cassandra-env.sh calculate_heap_sizes() reads `free -m`, i.e. the HOST's
+# /proc/meminfo (nothing namespaces it), then does
+# max(min(1/2 ram, 1024M), min(1/4 ram, 8192M)) -> the 8192M cap. Eight GiB of
+# heap under a 3 GiB limit is an immediate OOMKilled loop. cassandra-env.sh
+# honours a MAX_HEAP_SIZE/HEAP_NEWSIZE *pair* instead of calculating -- and
+# setting only one of them hard-exits the launcher ("set or unset in pairs"), so
+# BOTH are below. 1 GiB of heap is deliberate rather than the 2 GiB cassop-696
+# uses: 696's rack1 never starts (blocked PVC) so only two JVMs run, while all
+# THREE racks come up here, and three ~1.5 GiB JVMs fit the 12g env_caps in
+# poll-configs/cassop-705.json with room for k3s and the operator.
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: test-cluster
+spec:
+  allowMultipleNodesPerWorker: true
+  clusterName: development
+  config:
+    cassandra-yaml:
+      authenticator: PasswordAuthenticator
+      authorizer: CassandraAuthorizer
+      num_tokens: 16
+      role_manager: CassandraRoleManager
+  managementApiAuth:
+    insecure: {}
+  podTemplateSpec:
+    spec:
+      containers:
+      - name: cassandra
+        env:
+        - name: MAX_HEAP_SIZE
+          value: 1G
+        - name: HEAP_NEWSIZE
+          value: 256M
+  racks:
+  - name: rack1
+  - name: rack2
+  - name: rack3
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: '2'
+      memory: 3Gi
+  serverType: cassandra
+  serverVersion: 4.1.2
+  size: 3
+  storageConfig:
+    cassandraDataVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+      storageClassName: standard

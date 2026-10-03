@@ -1,0 +1,39 @@
+nameOverride: e2e
+
+image:
+  tag: local
+  repository: controller
+
+testReceiver:
+  enabled: true
+
+logging:
+  enabled: true
+  fluentd:
+    image:
+      repository: fluentd-full
+      tag: local
+    configReloaderImage:
+      repository: config-reloader
+      tag: local
+  fluentbit:
+    configHotReload:
+      image:
+        repository: config-reloader
+        tag: local
+  clusterFlows:
+    - name: all
+      spec:
+        match:
+          - select: {}
+        globalOutputRefs: ["http"]
+  clusterOutputs:
+    - name: http
+      spec:
+        http:
+          endpoint: http://e2e-test-receiver:8080/e2e.tag
+          content_type: application/json
+          buffer:
+            type: memory
+            timekey: 1s
+            timekey_wait: 1s

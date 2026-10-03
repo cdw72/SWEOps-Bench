@@ -1,0 +1,36 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMScrapeConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: vm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: example-consul
+  annotations:
+    scrape: annotation
+spec:
+  staticConfigs: []
+  fileSDConfigs: []
+  httpSDConfigs: []
+  kubernetesSDConfigs: []
+  consulSDConfigs:
+  - server: http://consul.consul.svc:8081
+  dnsSDConfigs: []
+  ec2SDConfigs: []
+  azureSDConfigs: []
+  gceSDConfigs: []
+  openstackSDConfigs: []
+  digitalOceanSDConfigs: []
+  relabelConfigs: []
+  metricRelabelConfigs: []
+  metricsPath: null
+  scrapeInterval: "10s"
+  scrapeTimeout: "30s"
+  seriesLimit: 0
+  sampleLimit: 0
+  tlsConfig: null
+  oauth2: null
+  authorization: null
+  basicAuth: null
+  proxyURL: null
+  follow_redirects: null
+  vm_scrape_params: null

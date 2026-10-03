@@ -1,0 +1,83 @@
+#!/bin/bash
+
+set -o errexit
+
+test_dir=$(realpath $(dirname $0))
+. "${test_dir}"/../functions
+cluster="self-healing-advanced"
+
+set_debug
+
+crash_cluster_with_kubectl() {
+	# run chaos for Pods
+	for _ in $(seq 1 5); do
+		kubectl delete pod $cluster-pxc-0 $cluster-pxc-1 $cluster-pxc-2 --grace-period=0 --force || :
+	done
+
+	sleep 60
+
+	for i in $(seq 0 2); do
+		wait_crash_pod $cluster-pxc-$i
+	done
+}
+
+crash_cluster_with_chaos_mesh() {
+	yq eval '
+		.metadata.name = "chaos-cluster-kill" |
+		.spec.mode = "all" |
+		del(.spec.selector.pods.test-namespace) |
+		.spec.selector.pods.'$namespace'[0] = "'$cluster'-pxc-0" |
+		.spec.selector.pods.'$namespace'[1] = "'$cluster'-pxc-1" |
+		.spec.selector.pods.'$namespace'[2] = "'$cluster'-pxc-2"' $conf_dir/chaos-pod-kill.yml \
+		| kubectl apply -f -
+
+	sleep 60
+
+	for i in $(seq 0 2); do
+		wait_crash_pod $cluster-pxc-$i
+	done
+}
+
+check_if_cluster_restored() {
+	desc 'check data consistency'
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $cluster-pxc-0.$cluster-pxc -uroot -proot_password"
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $cluster-pxc-1.$cluster-pxc -uroot -proot_password"
+	compare_mysql_cmd "select-1" "SELECT * from myApp.myApp;" "-h $cluster-pxc-2.$cluster-pxc -uroot -proot_password"
+}
+
+main() {
+	create_infra $namespace
+	deploy_chaos_mesh $namespace
+
+	desc 'start cluster'
+	spinup_pxc "$cluster" "$test_dir/conf/$cluster.yml"
+
+	desc 'delete all PXC pods and check full crash'
+	crash_cluster_with_kubectl
+
+	cat_config "$test_dir/conf/$cluster.yml" \
+		| sed -e 's/autoRecovery: false/autoRecovery: true/' \
+		| kubectl apply -f-
+
+	sleep 240
+	wait_for_running $cluster-pxc 3
+	wait_cluster_consistency "$cluster" 3 2
+
+	desc 'check if full cluster crash repaired'
+	check_if_cluster_restored
+
+	desc 'crash all pxc pods with chaos mesh'
+	crash_cluster_with_chaos_mesh
+
+	sleep 240
+	wait_for_running $cluster-pxc 3
+	wait_cluster_consistency "$cluster" 3 2
+	desc 'check if full cluster crash repaired'
+	check_if_cluster_restored
+
+	destroy_chaos_mesh
+	destroy "$namespace"
+	desc "test passed"
+}
+
+main

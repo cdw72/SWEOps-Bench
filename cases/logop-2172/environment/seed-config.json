@@ -1,0 +1,51 @@
+{
+  "case_id": "logop-2172",
+  "k8s_version": "v1.28",
+  "operator_bundle": "chart-rendered-6.3.1.yaml",
+  "operator_ready": [
+    "-n default get deploy logop-logging-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "fluentbit-agent.yaml",
+      "ns": "default",
+      "settle": 5
+    },
+    {
+      "file": "logging-cr.yaml",
+      "ns": "default",
+      "settle": 30
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "-n default logs deploy/logop-logging-operator --tail=2000",
+      "Observed a panic"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "default"
+  ],
+  "pre_manifests": [
+    "logop-crds.yaml",
+    "prometheus-crds-minimal.yaml"
+  ],
+  "trigger_script": "logop-2172.sh",
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/logging-cr.yaml"
+    ]
+  ],
+  "poll_fault_settle": 30,
+  "poll_why": "2026-09-20 修「健康相位自带故障」(20260920-194024 场实证):operator 11:43:40 起容器、11:43:48 起 panic 循环(feedback-snapshot-1 里 Observed a panic 的原始时间戳),而注入发生在 12:09 —— 机械盖章给的全序列前缀 poll_healthy_steps=2 把 logging-cr.yaml 落进了 pre,而本案的 trigger 是「显性化触发器」(脚本头注释自述:只断言前置在位、不造任何东西)⇒ pre 相位故障 100% 在场,agent 诚实报障被记 false-alarm、accuracy_pre=0。panic 链 = Logging CR → logging_controller.go:261-285 收集 loggingRef 匹配的 FluentbitAgent → fluentbit reconciler → prometheusrules.go:33 的 maps.Copy(nil 之前);src-snapshot/controllers/ 下只有 logging/ 与 extensions/,没有独立的 FluentbitAgent 控制器 ⇒ pre 只 apply fluentbit-agent.yaml(spec:{},没人消费)时算子空跑、无 panic = 真健康。健康闸面:ns=default 仅 operator deploy,READY 1/1 即放行。注入步 = apply logging-cr.yaml(与原 cr_sequence 第 2 步同文件同形式);trigger logop-2172.sh 的前置断言(FluentbitAgent 在/metrics 空/PrometheusRule CRD 在)注入后全部成立,再由它等 panic 判 FAULT VERIFIED。故障语义零变化:对象、顺序、panic 机制与 oracle 路径完全一致;SWEOPS_SEED_PHASE 未设的 harbor/smoke 路径不受影响。poll-config 无兜底键(inject_after=510 已是统一档),不动。"
+}

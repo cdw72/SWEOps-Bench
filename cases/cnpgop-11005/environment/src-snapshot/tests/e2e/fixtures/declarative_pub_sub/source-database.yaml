@@ -1,0 +1,10 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: source-db-declarative
+spec:
+  name: declarative
+  owner: app
+  databaseReclaimPolicy: delete
+  cluster:
+    name: source-cluster

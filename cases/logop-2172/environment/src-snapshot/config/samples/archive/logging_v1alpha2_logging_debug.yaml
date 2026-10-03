@@ -1,0 +1,15 @@
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Logging
+metadata:
+  name: defaultlogging
+spec:
+  fluentd:
+    logFormat: text
+    logLevel: debug
+    disablePvc: true
+  fluentbit:
+    image:
+      tag: 1.9.10-debug
+      repository: fluent/fluent-bit
+      pullPolicy: IfNotPresent
+  controlNamespace: default

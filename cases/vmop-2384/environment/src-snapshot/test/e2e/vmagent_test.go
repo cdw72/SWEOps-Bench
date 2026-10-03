@@ -1,0 +1,863 @@
+package e2e
+
+import (
+	"context"
+	"fmt"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
+
+	vmv1beta1 "github.com/VictoriaMetrics/operator/api/operator/v1beta1"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/finalize"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/vmagent"
+)
+
+//nolint:dupl,lll
+var _ = Describe("test vmagent Controller", Label("vm", "agent", "vmagent"), func() {
+	ctx := context.Background()
+	Context("e2e vmagent", func() {
+		namespace := fmt.Sprintf("default-%d", GinkgoParallelProcess())
+		nsn := types.NamespacedName{
+			Namespace: namespace,
+		}
+		tlsSecretName := "vmagent-remote-tls-certs"
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, &vmv1beta1.VMAgent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      nsn.Name,
+					Namespace: nsn.Namespace,
+				},
+			},
+			)).ToNot(HaveOccurred())
+			waitResourceDeleted(ctx, nsn, &vmv1beta1.VMAgentList{})
+		})
+
+		It("should be idempotent when calling CreateOrUpdate multiple times", func() {
+			const attempts = 3
+			nsn.Name = "vmagent-idempotent"
+			cr := &vmv1beta1.VMAgent{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      nsn.Name,
+				},
+				Spec: vmv1beta1.VMAgentSpec{
+					RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+						{URL: "http://localhost:8429/api/v1/write"},
+					},
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						ReplicaCount: ptr.To[int32](1),
+					},
+				},
+			}
+
+			expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+				Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+			}, vmv1beta1.UpdateStatusOperational)
+
+			var agentDep appsv1.Deployment
+			agentDepName := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+			Expect(k8sClient.Get(ctx, agentDepName, &agentDep)).ToNot(HaveOccurred())
+			agentDepRV := agentDep.ResourceVersion
+
+			for i := 0; i < attempts; i++ {
+				var latestCR vmv1beta1.VMAgent
+				Expect(k8sClient.Get(ctx, nsn, &latestCR)).ToNot(HaveOccurred())
+				latestCR.Kind = "VMAgent"
+				latestCR.APIVersion = vmv1beta1.SchemeGroupVersion.String()
+				k8sClient.Scheme().Default(&latestCR)
+				Expect(vmagent.CreateOrUpdate(ctx, &latestCR, k8sClient)).ToNot(HaveOccurred())
+			}
+
+			var afterAgentDep appsv1.Deployment
+			Expect(k8sClient.Get(ctx, agentDepName, &afterAgentDep)).ToNot(HaveOccurred())
+			Expect(afterAgentDep.ResourceVersion).To(Equal(agentDepRV), "VMAgent Deployment resource version should not change")
+		})
+
+		DescribeTable("should create vmagent",
+			func(name string, cr *vmv1beta1.VMAgent, setup func(), verify func(*vmv1beta1.VMAgent)) {
+
+				cr.Name = name
+				nsn.Name = name
+				if setup != nil {
+					setup()
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				var created vmv1beta1.VMAgent
+				Expect(k8sClient.Get(ctx, nsn, &created)).ToNot(HaveOccurred())
+				verify(&created)
+
+			},
+			Entry("with rw stream aggr and relabeling", "stream-aggr", &vmv1beta1.VMAgent{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      nsn.Name,
+				},
+				Spec: vmv1beta1.VMAgentSpec{
+					RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+						{
+
+							URL: "http://localhost:8429/api/v1/write",
+							InlineUrlRelabelConfig: []*vmv1beta1.RelabelConfig{
+								{
+									SourceLabels: []string{"job"},
+									Action:       "drop",
+								},
+							},
+						},
+						{
+							URL: "http://localhost:8428/api/v1/write",
+							StreamAggrConfig: &vmv1beta1.StreamAggrConfig{
+								KeepInput: true,
+								Rules: []vmv1beta1.StreamAggrRule{
+									{
+										By:       []string{"verb", "le"},
+										Interval: "1m",
+										Match:    vmv1beta1.StringOrArray{"apiserver_request_duration_seconds_bucket"},
+										Outputs:  []string{"total"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+				nil,
+				func(cr *vmv1beta1.VMAgent) {
+					var dep appsv1.Deployment
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(), Namespace: namespace}, &dep)).ToNot(HaveOccurred())
+					Expect(dep.Spec.Template.Spec.Volumes).To(HaveLen(6))
+					Expect(dep.Spec.Template.Spec.Containers).To(HaveLen(2))
+					vmagentCnt := dep.Spec.Template.Spec.Containers[0]
+					Expect(vmagentCnt.Name).To(Equal("vmagent"))
+					Expect(vmagentCnt.VolumeMounts).To(HaveLen(6))
+					Expect(vmagentCnt.Args).To(ContainElements("-remoteWrite.streamAggr.config=,/etc/vm/stream-aggr/RWS_1-CM-STREAM-AGGR-CONF", "-remoteWrite.urlRelabelConfig=/etc/vm/relabeling/url_relabeling-0.yaml,"))
+				},
+			),
+			Entry("with 1 replica", "replica-1", &vmv1beta1.VMAgent{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      nsn.Name,
+				},
+				Spec: vmv1beta1.VMAgentSpec{
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						ReplicaCount: ptr.To[int32](1),
+					},
+					RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+						{URL: "http://localhost:8428"},
+					},
+				},
+			}, nil, func(cr *vmv1beta1.VMAgent) {
+				Eventually(func() error {
+					return expectPodCount(ctx, k8sClient, &appsv1.ReplicaSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					}, 1)
+				}, eventualDeploymentPodTimeout, 1).ShouldNot(HaveOccurred())
+
+			}),
+			Entry("with statefulMode", "vm-stateful",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							UseDefaultResources:                 ptr.To(false),
+							ReplicaCount:                        ptr.To[int32](1),
+							DisableAutomountServiceAccountToken: true,
+						},
+						StatefulMode: true,
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+						},
+					},
+				}, nil, func(cr *vmv1beta1.VMAgent) {
+					Eventually(func() error {
+						return expectPodCount(ctx, k8sClient, &appsv1.StatefulSet{
+							ObjectMeta: metav1.ObjectMeta{
+								Namespace: namespace,
+								Labels:    cr.SelectorLabels(),
+							},
+						}, 1)
+					}, eventualDeploymentPodTimeout, 1).ShouldNot(HaveOccurred())
+				},
+			),
+			Entry("with additional service and insert ports", "insert-ports",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+						},
+						InsertPorts: &vmv1beta1.InsertPorts{
+							GraphitePort: "8111",
+							OpenTSDBPort: "8112",
+						},
+						ServiceSpec: &vmv1beta1.AdditionalServiceSpec{
+							EmbeddedObjectMetadata: vmv1beta1.EmbeddedObjectMetadata{
+								Name: "vmagent-extra-service",
+							},
+							Spec: corev1.ServiceSpec{
+								Type: corev1.ServiceTypeNodePort,
+							},
+						},
+					},
+				}, nil, func(cr *vmv1beta1.VMAgent) {
+					Eventually(func() error {
+						return expectPodCount(ctx, k8sClient, &appsv1.ReplicaSet{
+							ObjectMeta: metav1.ObjectMeta{
+								Namespace: namespace,
+								Labels:    cr.SelectorLabels(),
+							},
+						}, 1)
+					}, eventualDeploymentPodTimeout, 1).ShouldNot(HaveOccurred())
+
+				}),
+			Entry("with tls remote target", "remote-tls",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+							{
+								URL: "http://localhost:8425",
+								TLSConfig: &vmv1beta1.TLSConfig{
+									CA: vmv1beta1.SecretOrConfigMap{
+										Secret: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: tlsSecretName,
+											},
+											Key: "remote-ca",
+										},
+									},
+									Cert: vmv1beta1.SecretOrConfigMap{
+										Secret: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: tlsSecretName,
+											},
+											Key: "remote-cert",
+										},
+									},
+									KeySecret: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: tlsSecretName,
+										},
+										Key: "remote-key",
+									},
+								},
+							},
+						},
+					},
+				},
+				func() {
+
+					tlsSecret := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      tlsSecretName,
+							Namespace: namespace,
+						},
+						StringData: map[string]string{
+							"remote-ca":   tlsCA,
+							"remote-cert": tlsCert,
+							"remote-key":  tlsKey,
+						},
+					}
+					Expect(func() error {
+						if err := k8sClient.Create(ctx, tlsSecret); err != nil &&
+							!k8serrors.IsAlreadyExists(err) {
+							return err
+						}
+						return nil
+					}()).ToNot(HaveOccurred())
+				},
+				func(cr *vmv1beta1.VMAgent) {
+					Eventually(func() error {
+						return expectPodCount(ctx, k8sClient, &appsv1.ReplicaSet{
+							ObjectMeta: metav1.ObjectMeta{
+								Namespace: namespace,
+								Labels:    cr.SelectorLabels(),
+							},
+						}, 1)
+					}, eventualDeploymentPodTimeout, 1).ShouldNot(HaveOccurred())
+					Expect(finalize.SafeDelete(
+						ctx,
+						k8sClient,
+						&corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+							Name:      tlsSecretName,
+							Namespace: nsn.Namespace,
+						}},
+					)).ToNot(HaveOccurred())
+
+				}),
+			Entry("with strict security", "strict-sec",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							UseStrictSecurity:                   ptr.To(true),
+							ReplicaCount:                        ptr.To[int32](1),
+							DisableAutomountServiceAccountToken: true,
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+						},
+						CommonScrapeParams: vmv1beta1.CommonScrapeParams{
+							SelectAllByDefault: true,
+						},
+					},
+				}, nil, func(cr *vmv1beta1.VMAgent) {
+					Eventually(func() error {
+						return expectPodCount(ctx, k8sClient, &appsv1.ReplicaSet{
+							ObjectMeta: metav1.ObjectMeta{
+								Namespace: namespace,
+								Labels:    cr.SelectorLabels(),
+							},
+						}, 1)
+					}, eventualDeploymentPodTimeout, 1).ShouldNot(HaveOccurred())
+					var dep appsv1.Deployment
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(), Namespace: namespace}, &dep)).ToNot(HaveOccurred())
+					// assert security
+					Expect(dep.Spec.Template.Spec.SecurityContext).NotTo(BeNil())
+					Expect(dep.Spec.Template.Spec.SecurityContext.RunAsUser).NotTo(BeNil())
+					Expect(dep.Spec.Template.Spec.Containers).To(HaveLen(2))
+					Expect(dep.Spec.Template.Spec.InitContainers).To(HaveLen(1))
+					pc := dep.Spec.Template.Spec.Containers
+					pic := dep.Spec.Template.Spec.InitContainers
+					Expect(pc[0].SecurityContext).NotTo(BeNil())
+					Expect(pc[1].SecurityContext).NotTo(BeNil())
+					Expect(pic[0].SecurityContext).NotTo(BeNil())
+					Expect(pc[0].SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+					Expect(pc[1].SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+					Expect(pic[0].SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+					Expect(dep.Spec.Template.Spec.Volumes).To(HaveLen(5))
+
+					// assert k8s api access
+
+					// config-reloader must have k8s api access
+					vmagentPod := mustGetFirstPod(ctx, k8sClient, &appsv1.ReplicaSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					})
+					Expect(hasVolumeMount(vmagentPod.Spec.Containers[0].VolumeMounts, "/var/run/secrets/kubernetes.io/serviceaccount")).ToNot(HaveOccurred())
+
+					// vmagent must have k8s api access
+					Expect(hasVolume(dep.Spec.Template.Spec.Volumes, "kube-api-access")).ToNot(HaveOccurred())
+					cric := pic[0]
+					Expect(cric.VolumeMounts).To(HaveLen(2))
+					crc := pc[1]
+					Expect(crc.Name).To(Equal("config-reloader"))
+					Expect(crc.VolumeMounts).To(HaveLen(2))
+					vmc := pc[0]
+					Expect(vmc.Name).To(Equal("vmagent"))
+					Expect(vmc.VolumeMounts).To(HaveLen(5))
+					Expect(hasVolumeMount(vmc.VolumeMounts, "/var/run/secrets/kubernetes.io/serviceaccount")).ToNot(HaveOccurred())
+				}),
+			Entry("with UseProxyProtocol in deployment mode", "proxy-protocol-deploy",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+							ExtraArgs: map[string]string{
+								"httpListenAddr.useProxyProtocol": "true",
+							},
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+						},
+					},
+				}, nil, func(cr *vmv1beta1.VMAgent) {},
+			),
+			Entry("with UseProxyProtocol in statefulset mode", "proxy-protocol-sts",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+							ExtraArgs: map[string]string{
+								"httpListenAddr.useProxyProtocol": "true",
+							},
+						},
+						StatefulMode: true,
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+						},
+					},
+				}, nil, func(cr *vmv1beta1.VMAgent) {},
+			),
+			Entry("with UseProxyProtocol in daemonset mode", "proxy-protocol-ds",
+				&vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+							ExtraArgs: map[string]string{
+								"httpListenAddr.useProxyProtocol": "true",
+							},
+						},
+						DaemonSetMode: true,
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428"},
+						},
+					},
+				}, nil, func(cr *vmv1beta1.VMAgent) {},
+			),
+		)
+		type testStep struct {
+			setup  func(*vmv1beta1.VMAgent)
+			modify func(*vmv1beta1.VMAgent)
+			verify func(*vmv1beta1.VMAgent)
+		}
+		DescribeTable("should update exist vmagent",
+			func(name string, initCR *vmv1beta1.VMAgent, steps ...testStep) {
+				// create and wait ready
+				initCR.Name = name
+				initCR.Namespace = namespace
+				nsn.Name = name
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, initCR)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+				for _, step := range steps {
+					if step.setup != nil {
+						step.setup(initCR)
+					}
+					// update and wait ready
+					var toUpdate vmv1beta1.VMAgent
+					Expect(k8sClient.Get(ctx, nsn, &toUpdate)).ToNot(HaveOccurred())
+					expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+						step.modify(&toUpdate)
+						Expect(k8sClient.Update(ctx, &toUpdate)).ToNot(HaveOccurred())
+					}, vmv1beta1.UpdateStatusOperational)
+					// verify
+					var updated vmv1beta1.VMAgent
+					Expect(k8sClient.Get(ctx, nsn, &updated)).ToNot(HaveOccurred())
+					step.verify(&updated)
+				}
+			},
+			Entry("by scaling replicas to 2", "update-replicas-2",
+				&vmv1beta1.VMAgent{
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://some-vm-single:8428"},
+						},
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) { cr.Spec.ReplicaCount = ptr.To[int32](2) },
+					verify: func(cr *vmv1beta1.VMAgent) {
+						Eventually(func() error {
+							return expectPodCount(ctx, k8sClient, &appsv1.ReplicaSet{
+								ObjectMeta: metav1.ObjectMeta{
+									Namespace: namespace,
+									Labels:    cr.SelectorLabels(),
+								},
+							}, 2)
+						}, eventualDeploymentAppReadyTimeout, 1).ShouldNot(HaveOccurred())
+					},
+				},
+			),
+			Entry("by changing revisionHistoryLimit to 3", "update-revision",
+				&vmv1beta1.VMAgent{
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount:              ptr.To[int32](1),
+							RevisionHistoryLimitCount: ptr.To[int32](11),
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://some-vm-single:8428"},
+						},
+					},
+				},
+				testStep{
+					setup: func(cr *vmv1beta1.VMAgent) {
+						Expect(getRevisionHistoryLimit(ctx, k8sClient, types.NamespacedName{
+							Namespace: cr.Namespace,
+							Name:      cr.PrefixedName(),
+						})).To(Equal(int32(11)))
+					},
+					modify: func(cr *vmv1beta1.VMAgent) { cr.Spec.RevisionHistoryLimitCount = ptr.To[int32](3) },
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsnDeployment := types.NamespacedName{
+							Name:      cr.PrefixedName(),
+							Namespace: namespace,
+						}
+						Expect(getRevisionHistoryLimit(ctx, k8sClient, nsnDeployment)).To(Equal(int32(3)))
+					},
+				},
+			),
+			Entry("by switching to statefulMode with shard", "stateful-shard",
+				&vmv1beta1.VMAgent{
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://some-vm-single:8428"},
+						},
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) {
+						cr.Spec.ReplicaCount = ptr.To[int32](1)
+						cr.Spec.ShardCount = ptr.To[int32](2)
+						cr.Spec.StatefulMode = true
+						cr.Spec.IngestOnlyMode = ptr.To(true)
+					},
+					verify: func(cr *vmv1beta1.VMAgent) {
+						var createdSts appsv1.StatefulSet
+						Expect(k8sClient.Get(ctx, types.NamespacedName{
+							Namespace: namespace,
+							Name:      fmt.Sprintf("%s-%d", cr.PrefixedName(), 0),
+						}, &createdSts)).ToNot(HaveOccurred())
+						Expect(k8sClient.Get(ctx, types.NamespacedName{
+							Namespace: namespace,
+							Name:      fmt.Sprintf("%s-%d", cr.PrefixedName(), 1),
+						}, &createdSts)).ToNot(HaveOccurred())
+
+					},
+				},
+			),
+
+			Entry("by transition into statefulMode and back", "stateful-transition",
+				&vmv1beta1.VMAgent{
+					Spec: vmv1beta1.VMAgentSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://some-vm-single:8428"},
+						},
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) { cr.Spec.StatefulMode = true },
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						Expect(k8sClient.Get(ctx, nsn, &appsv1.StatefulSet{})).ToNot(HaveOccurred())
+						waitResourceDeleted(ctx, nsn, &appsv1.DeploymentList{})
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) { cr.Spec.StatefulMode = false },
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						Expect(k8sClient.Get(ctx, nsn, &appsv1.Deployment{})).ToNot(HaveOccurred())
+						waitResourceDeleted(ctx, nsn, &appsv1.StatefulSetList{})
+					},
+				},
+			),
+			Entry("by deleting and restoring PodDisruptionBudget and serviceScrape", "pdb-mutations-scrape",
+				&vmv1beta1.VMAgent{Spec: vmv1beta1.VMAgentSpec{
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						UseDefaultResources: ptr.To(false),
+						ReplicaCount:        ptr.To[int32](2),
+					},
+					CommonScrapeParams: vmv1beta1.CommonScrapeParams{
+						SelectAllByDefault: true,
+					},
+					PodDisruptionBudget: &vmv1beta1.EmbeddedPodDisruptionBudgetSpec{MaxUnavailable: &intstr.IntOrString{IntVal: 1}},
+					RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+						{URL: "http://some-vm-single:8428"},
+					},
+				},
+				},
+				testStep{
+					setup: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						Expect(k8sClient.Get(ctx, nsn, &policyv1.PodDisruptionBudget{})).ToNot(HaveOccurred())
+						Expect(k8sClient.Get(ctx, nsn, &vmv1beta1.VMServiceScrape{})).ToNot(HaveOccurred())
+					},
+					modify: func(cr *vmv1beta1.VMAgent) {
+						cr.Spec.PodDisruptionBudget = nil
+						cr.Spec.DisableSelfServiceScrape = ptr.To(true)
+					},
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						waitResourceDeleted(ctx, nsn, &policyv1.PodDisruptionBudgetList{})
+						waitResourceDeleted(ctx, nsn, &vmv1beta1.VMServiceScrapeList{})
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) {
+						cr.Spec.PodDisruptionBudget = &vmv1beta1.EmbeddedPodDisruptionBudgetSpec{MaxUnavailable: &intstr.IntOrString{IntVal: 1}}
+						cr.Spec.DisableSelfServiceScrape = nil
+
+					},
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						Expect(k8sClient.Get(ctx, nsn, &policyv1.PodDisruptionBudget{})).ToNot(HaveOccurred())
+						Expect(k8sClient.Get(ctx, nsn, &vmv1beta1.VMServiceScrape{})).ToNot(HaveOccurred())
+
+					},
+				},
+			),
+			Entry("by transition into daemonSet and back", "daemonset-transition",
+				&vmv1beta1.VMAgent{Spec: vmv1beta1.VMAgentSpec{
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						ReplicaCount: ptr.To[int32](1),
+					},
+					RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+						{URL: "http://some-vm-single:8428"},
+					},
+				},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) { cr.Spec.DaemonSetMode = true },
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						Expect(k8sClient.Get(ctx, nsn, &appsv1.DaemonSet{})).ToNot(HaveOccurred())
+						Expect(k8sClient.Get(ctx, nsn, &vmv1beta1.VMPodScrape{})).ToNot(HaveOccurred())
+						waitResourceDeleted(ctx, nsn, &appsv1.DeploymentList{})
+						waitResourceDeleted(ctx, nsn, &vmv1beta1.VMServiceScrapeList{})
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1beta1.VMAgent) {
+						cr.Spec.StatefulMode = true
+						cr.Spec.DaemonSetMode = false
+					},
+					verify: func(cr *vmv1beta1.VMAgent) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}
+						Expect(k8sClient.Get(ctx, nsn, &appsv1.StatefulSet{})).ToNot(HaveOccurred())
+						Expect(k8sClient.Get(ctx, nsn, &vmv1beta1.VMServiceScrape{})).ToNot(HaveOccurred())
+						waitResourceDeleted(ctx, nsn, &appsv1.DaemonSetList{})
+						waitResourceDeleted(ctx, nsn, &appsv1.DeploymentList{})
+						waitResourceDeleted(ctx, nsn, &vmv1beta1.VMPodScrapeList{})
+					},
+				},
+			),
+		)
+
+		It("should skip reconciliation when VMAgent is paused", func() {
+			ctx := context.Background()
+			nsn.Name = "vmagent-paused"
+			By("creating a VMAgent")
+			initialReplicas := int32(1)
+			cr := &vmv1beta1.VMAgent{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      nsn.Name,
+				},
+				Spec: vmv1beta1.VMAgentSpec{
+					RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+						{URL: "http://localhost:8428/api/v1/write"},
+					},
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						ReplicaCount: &initialReplicas,
+					},
+				},
+			}
+			expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+				Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+			}, vmv1beta1.UpdateStatusOperational)
+			deploymentName := types.NamespacedName{Name: cr.PrefixedName(), Namespace: namespace}
+
+			By("pausing the VMAgent")
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+					return err
+				}
+				cr.Spec.Paused = true
+				return k8sClient.Update(ctx, cr)
+			}, eventualStatefulsetAppReadyTimeout).ShouldNot(HaveOccurred())
+
+			By("attempting to scale the VMAgent while paused")
+			updatedReplicas := int32(2)
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+					return err
+				}
+				cr.Spec.ReplicaCount = &updatedReplicas
+				return k8sClient.Update(ctx, cr)
+			}, eventualStatefulsetAppReadyTimeout).ShouldNot(HaveOccurred())
+
+			Consistently(func() int32 {
+				var dep appsv1.Deployment
+				Expect(k8sClient.Get(ctx, deploymentName, &dep)).ToNot(HaveOccurred())
+				return *dep.Spec.Replicas
+			}, "10s", "1s").Should(Equal(initialReplicas))
+
+			By("unpausing the VMAgent")
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+					return err
+				}
+				cr.Spec.Paused = false
+				return k8sClient.Update(ctx, cr)
+			}, eventualStatefulsetAppReadyTimeout).ShouldNot(HaveOccurred())
+
+			Eventually(func() int32 {
+				var dep appsv1.Deployment
+				Expect(k8sClient.Get(ctx, deploymentName, &dep)).ToNot(HaveOccurred())
+				return *dep.Spec.Replicas
+			}, eventualStatefulsetAppReadyTimeout).Should(Equal(updatedReplicas))
+		})
+
+		Context("status transitions", func() {
+			BeforeEach(func() {
+				ctx = context.Background()
+			})
+			It("should reach operational after creation", func() {
+				nsn.Name = "vmagent-status-created"
+				cr := &vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428/api/v1/write"},
+						},
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+			})
+
+			It("should transition operational→expanding→operational on spec update", func() {
+				nsn.Name = "vmagent-status-update"
+				cr := &vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428/api/v1/write"},
+						},
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				By("updating the spec to trigger reconcile")
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.LogLevel = "WARN"
+						return k8sClient.Update(ctx, cr)
+					}, eventualDeploymentAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusExpanding, vmv1beta1.UpdateStatusOperational)
+			})
+
+			It("should transition operational→paused when paused", func() {
+				nsn.Name = "vmagent-status-pause"
+				cr := &vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428/api/v1/write"},
+						},
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				By("pausing the VMAgent")
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualExpandingTimeout, func() {
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Paused = true
+						return k8sClient.Update(ctx, cr)
+					}, eventualDeploymentAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusPaused)
+			})
+
+			It("should transition paused→operational when unpaused", func() {
+				nsn.Name = "vmagent-status-unpause"
+				cr := &vmv1beta1.VMAgent{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAgentSpec{
+						RemoteWrite: []vmv1beta1.VMAgentRemoteWriteSpec{
+							{URL: "http://localhost:8428/api/v1/write"},
+						},
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+							Paused:       true,
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualExpandingTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusPaused)
+
+				By("unpausing the VMAgent")
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAgentList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Paused = false
+						return k8sClient.Update(ctx, cr)
+					}, eventualDeploymentAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+			})
+		})
+	})
+})

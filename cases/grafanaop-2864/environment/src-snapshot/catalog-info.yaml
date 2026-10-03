@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: grafana-operator
+  title: grafana-operator
+  description: |
+    An operator for Grafana that installs and manages Grafana instances, Dashboards and Datasources through Kubernetes/OpenShift CRs
+  tags:
+    - gitops
+  links:
+    - title: "Internal Slack Channel #grafana-operator"
+      url: https://grafanalabs.enterprise.slack.com/archives/C06K5TJ469W
+    - title: "Community Slack Channel #grafana-operator"
+      url: https://grafana.slack.com/archives/C0692KN29K3
+    - title: "Kubernetes Slack Channel #grafana-operator (legacy)"
+      url: https://kubernetes.slack.com/archives/C019A1KTYKC
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: grafana/grafana-operator
+spec:
+  type: tool
+  owner: group:default/devex
+  lifecycle: production

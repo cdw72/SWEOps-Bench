@@ -1,0 +1,28 @@
+{
+ "case": "zkop-474",
+ "confirmed": [
+  {
+   "kind": "drift_svc_annotation",
+   "target": "test-cluster-admin-server",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": false,
+    "fixed": true
+   }
+  },
+  {
+   "kind": "clog_sig",
+   "target": "java.net.SocketTimeoutException",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 7,
+    "fixed": 0
+   },
+   "note": "\u6b63\u5411\u4f34\u968f\u817f(buggy ZK connect/read timed out 5+2);raw \u53cc\u4fa7\u590d\u6570\u6838\u8fc7,\u975e\u5f52\u4e00\u5316\u4f2a\u5f71"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

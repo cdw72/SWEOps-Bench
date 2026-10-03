@@ -1,0 +1,110 @@
+apiVersion: v1
+automountServiceAccountToken: true
+kind: ServiceAccount
+metadata:
+  name: collector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: (join('-', ['collector', $namespace]))
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - nodes
+  - nodes/metrics
+  - services
+  - endpoints
+  - namespaces
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - watch
+  - list
+- nonResourceURLs:
+  - /metrics
+  - /metrics/cadvisor
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: (join('-', ['collector', $namespace]))
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: (join('-', ['collector', $namespace]))
+subjects:
+- kind: ServiceAccount
+  name: collector
+  namespace: ($namespace)
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: prometheus-cr
+spec:
+  config:
+    receivers:
+      prometheus:
+        config:
+          scrape_configs: []
+    exporters:
+      prometheus:
+        endpoint: 0.0.0.0:9090
+    service:
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          exporters: [prometheus]
+  mode: statefulset
+  serviceAccount: collector
+  targetAllocator:
+    enabled: true
+    mtls:
+      enabled: true
+    prometheusCR:
+      enabled: true
+      scrapeInterval: 1s
+      serviceMonitorSelector: {}
+      podMonitorSelector: {}
+    serviceAccount: ta
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: check-ta-serving-over-https
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: check-ta
+          image: mirror.gcr.io/curlimages/curl:latest
+          volumeMounts:
+            - name: tls-secret
+              mountPath: /etc/tls
+              readOnly: true
+          args:
+            - /bin/sh
+            - -c
+            - |
+              curl -s \
+                --cert /etc/tls/tls.crt \
+                --key /etc/tls/tls.key \
+                --cacert /etc/tls/ca.crt \
+                https://prometheus-cr-targetallocator:443
+      volumes:
+        - name: tls-secret
+          secret:
+            secretName: prometheus-cr-ta-client-cert

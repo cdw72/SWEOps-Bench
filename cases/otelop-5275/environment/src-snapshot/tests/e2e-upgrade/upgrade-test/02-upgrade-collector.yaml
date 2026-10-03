@@ -1,0 +1,25 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: simplest
+  annotations:
+    operatorVersion: "latest"
+spec:
+  replicas: 2
+  config:
+    receivers:
+      jaeger:
+        protocols:
+          grpc: {}
+      otlp:
+        protocols:
+          grpc: {}
+          http: {}
+    exporters:
+      debug: {}
+
+    service:
+      pipelines:
+        traces:
+          receivers: [jaeger,otlp]
+          exporters: [debug]

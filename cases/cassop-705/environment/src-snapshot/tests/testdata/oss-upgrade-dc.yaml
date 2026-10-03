@@ -1,0 +1,27 @@
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: dc1
+spec:
+  clusterName: cluster1
+  serverType: cassandra
+  # Do not change serverVersion. This cassdc is intended for testing a canary
+  # upgrade specifically from this version.
+  serverVersion: "4.0.1"
+  managementApiAuth:
+    insecure: {}
+  size: 3
+  storageConfig:
+    cassandraDataVolumeClaimSpec:
+      storageClassName: standard
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+  racks:
+    - name: r1
+  config:
+    jvm-server-options:
+      initial_heap_size: "512m"
+      max_heap_size: "512m"

@@ -1,0 +1,2 @@
+pkg/controller/zookeepercluster/zookeepercluster_controller.go
+pkg/zk/generators.go

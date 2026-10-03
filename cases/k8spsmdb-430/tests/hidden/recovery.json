@@ -1,0 +1,123 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "default",
+    "get",
+    "deploy",
+    "percona-server-mongodb-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 600,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "CGO_ENABLED=0",
+   "GO_LDFLAGS=",
+   "go",
+   "build",
+   "-mod=vendor",
+   "-ldflags",
+   "-w -s -X main.GitCommit= -X main.GitBranch=",
+   "-o",
+   "/tmp/rec/bin/percona-server-mongodb-operator",
+   "cmd/manager/main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/percona-server-mongodb-operator",
+    "/usr/local/bin/percona-server-mongodb-operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "default/percona-server-mongodb-operator"
+ },
+ "settle": 120,
+ "slug": "k8spsmdb-430",
+ "probes": [
+  {
+   "name": "gen1-sts-alive",
+   "cmd": [
+    "-n",
+    "default",
+    "get",
+    "sts",
+    "-l",
+    "app.kubernetes.io/instance=mongodb-cluster",
+    "-o",
+    "jsonpath={.items[*].metadata.name}"
+   ],
+   "want": "mongodb-cluster-rs0"
+  }
+ ],
+ "rearm": [
+  [
+   "-n",
+   "default",
+   "exec",
+   "deploy/stale-proxy",
+   "--",
+   "wget",
+   "-qO-",
+   "--post-data={}",
+   "http://127.0.0.1:8080/stale/off"
+  ],
+  [
+   "-n",
+   "default",
+   "rollout",
+   "restart",
+   "deploy/percona-server-mongodb-operator"
+  ],
+  [
+   "-n",
+   "default",
+   "rollout",
+   "status",
+   "deploy/percona-server-mongodb-operator",
+   "--timeout=300s"
+  ],
+  [
+   "-n",
+   "default",
+   "get",
+   "sts",
+   "-l",
+   "app.kubernetes.io/instance=mongodb-cluster",
+   "-w",
+   "--request-timeout=60s"
+  ],
+  [
+   "-n",
+   "default",
+   "exec",
+   "deploy/stale-proxy",
+   "--",
+   "wget",
+   "-qO-",
+   "--post-data={}",
+   "http://127.0.0.1:8080/stale/on"
+  ],
+  [
+   "-n",
+   "default",
+   "rollout",
+   "restart",
+   "deploy/percona-server-mongodb-operator"
+  ],
+  [
+   "-n",
+   "default",
+   "rollout",
+   "status",
+   "deploy/percona-server-mongodb-operator",
+   "--timeout=300s"
+  ]
+ ],
+ "rearm_settle": 180
+}

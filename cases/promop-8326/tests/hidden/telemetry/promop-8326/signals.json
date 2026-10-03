@@ -1,0 +1,29 @@
+{
+ "case": "promop-8326",
+ "confirmed": [
+  {
+   "kind": "object_pods",
+   "target": "default/prometheus-promop-0",
+   "judge": "absent",
+   "values": {
+    "buggy": true,
+    "fixed": false
+   },
+   "note": "fixed \u4fa7 pod \u4e0d\u5b58\u5728\u662f #8327 \u62d2\u7edd\u8bed\u4e49\u7684\u9884\u671f\u7ec8\u6001,\u975e\u4f2a\u5feb\u7167;\u8f85\u8bc1=fixed operator.log \u7248\u672c\u95e8\u9519\u8bef\u4e32 + buggy \u5bb9\u5668\u65e5\u5fd7 Azure AD \u4e32"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "must provide an Azure Managed Identity",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   },
+   "note": "2026-09-10 \u8865:prometheus \u5bb9\u5668\u9010\u5b57 \"must provide an Azure Managed Identity\" \u00d72(\u4f34 CrashLoopBackOff);\u4e0e\u529d\u544a\u7ea7 warn ignoring \"workload_identity\" \u540c\u6e90,\u662f\u672c\u6848\u7684 smoking gun"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

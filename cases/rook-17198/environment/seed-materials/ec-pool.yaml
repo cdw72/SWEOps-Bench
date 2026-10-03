@@ -1,0 +1,14 @@
+# rook-17198 re-arm payload -- the SAME object the scene trigger creates
+# (seed-materials/triggers/rook-17198-scene.sh, step 5), kept here only so the
+# judge can re-create it from a file (its re-arm steps are plain kubectl argv,
+# so there is no way to pipe a heredoc). Nothing at seed time reads this file.
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: ec-pool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  erasureCoded:
+    dataChunks: 2
+    codingChunks: 1

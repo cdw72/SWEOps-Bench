@@ -1,0 +1,2 @@
+api/operator/v1/vmanomaly_types.go
+api/operator/v1beta1/vmagent_types.go

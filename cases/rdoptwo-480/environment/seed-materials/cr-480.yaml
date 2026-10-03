@@ -1,0 +1,40 @@
+apiVersion: redis.redis.opstreelabs.in/v1beta1
+kind: RedisCluster
+metadata:
+  name: test-cluster
+  namespace: default
+spec:
+  clusterSize: 3
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.0.15
+    imagePullPolicy: IfNotPresent
+    # 必须:redis-cluster.go:57 Resources: cr.Spec.KubernetesConfig.Resources
+    # -> statefulset.go:220 *containerParams.Resources 无条件解引用,缺则
+    # generateContainerDef nil-deref panic(2026-09-09 gen0 双侧崩根因)。
+    # 值照抄上游 redis-ot-container-kit-operator 仓库的 cr_cluster.yaml 示例。
+    resources:
+      requests:
+        cpu: 101m
+        memory: 128Mi
+      limits:
+        cpu: 101m
+        memory: 128Mi
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:1.0
+    imagePullPolicy: IfNotPresent
+    # 同因(statefulset.go:314 *params.RedisExporterResources 解引用)。
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

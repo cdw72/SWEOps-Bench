@@ -1,0 +1,20 @@
+# vmop-2384 fault input = the VMSingle CR itself. Buggy operator (v0.73.1,
+# missing secrets `list` in the generated Role via getNamespaceRules) creates
+# the config-reloader sidecar whose reflector LIST is forbidden
+# ('cannot list resource secrets ... is forbidden'); fixed (#2387) grants list
+# so the reloader starts and config reaches VMSingle.
+# Recipe mirrored from seed_vmop_2384 (seed_sieve_case.py) verbatim.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: vmsingle
+  namespace: default
+spec:
+  retentionPeriod: 1d
+  image:
+    repository: victoriametrics/victoria-metrics
+    tag: v1.111.0
+  storage:
+    resources:
+      requests:
+        storage: 1Gi

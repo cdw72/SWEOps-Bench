@@ -1,0 +1,205 @@
+#!/bin/bash
+
+set -o errexit
+
+test_dir=$(realpath $(dirname $0))
+. ${test_dir}/../functions
+set_debug
+
+function check_telemetry_transfer() {
+
+	local cr_vs_uri=${1}
+	local cr_vs_channel=${2:-"disabled"}
+	local telemetry_state=${3:-"enabled"}
+
+	cluster="minimal-cluster"
+	desc 'create secrets and start client'
+	kubectl_bin apply -f $conf_dir/client.yml
+	yq eval '.metadata.name = "'${cluster}'"' $conf_dir/secrets.yml | kubectl_bin apply -f -
+
+	desc "create PSMDB minimal cluster $cluster"
+	yq eval '
+		.spec.upgradeOptions.versionServiceEndpoint = "'${cr_vs_uri}'" |
+		.spec.upgradeOptions.apply = "'${cr_vs_channel}'" |
+		.spec.initImage = "'$IMAGE'" |
+		.spec.crVersion = "9.9.9" |
+		.spec.image = "'$IMAGE_MONGOD'" |
+		.spec.pmm.image = "'$IMAGE_PMM_CLIENT'" |
+		.spec.backup.enabled = false |
+		.spec.backup.image = "'$IMAGE_BACKUP'"' ${src_dir}/deploy/cr-minimal.yaml \
+		| kubectl_bin apply -f -
+
+	desc 'check if Pod is started'
+	wait_for_running "${cluster}-rs0" 1
+	sleep 20
+
+	desc 'create user myApp'
+	run_mongo 'db.createUser({user: "myApp", pwd: "myPass", roles: [{ db: "myApp", role: "readWrite" }]})' \
+		"userAdmin:userAdmin123456@${cluster}-rs0.${namespace}"
+
+	desc 'write data, read from all'
+	run_mongo 'use myApp\n db.test.insert({ x: 100500 })' "myApp:myPass@${cluster}-rs0.${namespace}"
+
+	desc 'check telemetry'
+	kubectl_bin logs $(kubectl get pods --selector=run=version-service-cr -o jsonpath='{.items[0].metadata.name}' ${OPERATOR_NS:+-n $OPERATOR_NS}) \
+		${OPERATOR_NS:+-n $OPERATOR_NS} \
+		| grep -E 'server request payload|unary call' \
+		| grep -Eo '\{.*\}' \
+		| jq 'del(."grpc.request.content".msg.customResourceUid)' \
+		| jq 'del(."grpc.request.content".msg.kubeVersion)' \
+		| jq 'del(."grpc.start_time")' \
+		| jq 'del(."grpc.time_ms")' \
+			>${tmp_dir}/${telemetry_state}_telemetry.version-service-cr.log.json
+
+	kubectl_bin logs $(kubectl get pods --selector=run=version-service -o jsonpath='{.items[0].metadata.name}' ${OPERATOR_NS:+-n $OPERATOR_NS}) \
+		${OPERATOR_NS:+-n $OPERATOR_NS} \
+		| grep -E 'server request payload|unary call' \
+		| grep -Eo '\{.*\}' \
+		| jq 'del(."grpc.request.content".msg.customResourceUid)' \
+		| jq 'del(."grpc.request.content".msg.kubeVersion)' \
+		| jq 'del(."grpc.start_time")' \
+		| jq 'del(."grpc.time_ms")' \
+			>${tmp_dir}/${telemetry_state}_telemetry.version-service.log.json
+
+	local telemetry_log_file="${telemetry_state}_telemetry.version-service.log${OPERATOR_NS:+-cw}.json"
+	desc 'telemetry was disabled in CR but in operator not'
+	if [ "${cr_vs_channel}" == 'disabled' -a "${telemetry_state}" == 'enabled' ]; then
+		# operator fallback VS should have telemetry
+		diff ${test_dir}/compare/${telemetry_log_file} <(grep -f ${tmp_dir}/${telemetry_state}_telemetry.version-service.log.json ${test_dir}/compare/${telemetry_log_file})
+		# CR VS should not have telemetry
+		[[ -s "${tmp_dir}/enabled_telemetry.version-service-cr.log.json" ]] && exit 1
+	fi
+
+	local telemetry_cr_log_file="${telemetry_state}_telemetry.version-service-cr.log${OPERATOR_NS:+-cw}.json"
+	local image_prefix=${cr_vs_channel%'-recommended'}
+	desc 'telemetry was disabled in operator but not in CR'
+	if [ "${cr_vs_channel}" == "${image_prefix}-recommended" -a "${telemetry_state}" == 'disabled' ]; then
+		# cr VS should have telemetry
+		diff ${test_dir}/compare/${telemetry_cr_log_file} <(grep -f ${tmp_dir}/${telemetry_state}_telemetry.version-service-cr.log.json ${test_dir}/compare/${telemetry_cr_log_file})
+		# operator VS should not have telemetry
+		[[ -s ${tmp_dir}/disabled_telemetry.version-service.log.json ]] && exit 1
+	fi
+
+	desc 'telemetry was disabled in CR as well as in operator'
+	if [ "${cr_vs_channel}" == 'disabled' -a "${telemetry_state}" == 'disabled' ]; then
+		# CR VS should not have telemetry
+		[[ -s ${tmp_dir}/disabled_telemetry.version-service-cr.log.json ]] && exit 1
+		# operator VS should not have telemetry
+		[[ -s ${tmp_dir}/disabled_telemetry.version-service.log.json ]] && exit 1
+	fi
+
+	kubectl_bin delete pod ${OPERATOR_NS:+-n $OPERATOR_NS} $(get_operator_pod)
+	kubectl_bin patch psmdb minimal-cluster --type=merge -p '{"metadata":{"finalizers":["delete-psmdb-pvc"]}}'
+	kubectl_bin delete psmdb --all
+	kubectl_bin delete deploy psmdb-client
+	sleep 30
+
+}
+
+create_infra $namespace
+
+desc 'install version service'
+kubectl_bin create configmap ${OPERATOR_NS:+-n $OPERATOR_NS} versions \
+	--from-file $test_dir/conf/operator.9.9.9.psmdb-operator.dep.json \
+	--from-file $test_dir/conf/operator.9.9.9.psmdb-operator.json
+
+kubectl_bin apply ${OPERATOR_NS:+-n $OPERATOR_NS} -f $test_dir/conf/vs.yml
+sleep 10
+yq eval '(.. | select(tag == "!!str")) |= sub("version-service$", "version-service-cr")' "${test_dir}/conf/vs.yml" \
+	| kubectl_bin apply ${OPERATOR_NS:+-n $OPERATOR_NS} -f -
+
+kubectl_bin ${OPERATOR_NS:+-n $OPERATOR_NS} set env deploy/percona-server-mongodb-operator PERCONA_VS_FALLBACK_URI=http://version-service:11000
+sleep 30
+
+desc "enable telemetry on operator level"
+kubectl_bin get deployment/percona-server-mongodb-operator -o yaml ${OPERATOR_NS:+-n $OPERATOR_NS} \
+	| yq eval '(.spec.template.spec.containers[0].env[] | select(.name == "DISABLE_TELEMETRY").value) = "false"' \
+	| kubectl_bin apply ${OPERATOR_NS:+-n $OPERATOR_NS} -f -
+
+wait_deployment 'percona-server-mongodb-operator'
+
+check_telemetry_transfer "http://version-service-cr:11000" "disabled" "enabled"
+
+desc "disabling telemetry on the operator level"
+kubectl_bin delete pod -l run=version-service-cr ${OPERATOR_NS:+-n $OPERATOR_NS}
+kubectl_bin delete pod -l run=version-service ${OPERATOR_NS:+-n $OPERATOR_NS}
+
+kubectl_bin get deployment/percona-server-mongodb-operator -o yaml ${OPERATOR_NS:+-n $OPERATOR_NS} \
+	| yq eval '(.spec.template.spec.containers[0].env[] | select(.name == "DISABLE_TELEMETRY").value) = "true"' \
+	| kubectl_bin apply ${OPERATOR_NS:+-n $OPERATOR_NS} -f -
+
+ACTUAL_MONGOD_VERSION=$(get_mongod_ver_from_image "${IMAGE_MONGOD}")
+
+wait_deployment 'percona-server-mongodb-operator'
+check_telemetry_transfer "http://version-service-cr:11000" "${ACTUAL_MONGOD_VERSION:0:3}-recommended" "disabled"
+
+kubectl_bin get deployment/percona-server-mongodb-operator -o yaml ${OPERATOR_NS:+-n $OPERATOR_NS} \
+	| yq eval '(.spec.template.spec.containers[0].env[] | select(.name == "DISABLE_TELEMETRY").value) = "true"' \
+	| kubectl_bin apply ${OPERATOR_NS:+-n $OPERATOR_NS} -f -
+
+wait_deployment 'percona-server-mongodb-operator'
+kubectl_bin delete pod -l run=version-service-cr ${OPERATOR_NS:+-n $OPERATOR_NS}
+kubectl_bin delete pod -l run=version-service ${OPERATOR_NS:+-n $OPERATOR_NS}
+check_telemetry_transfer "http://version-service-cr:11000" "disabled" "disabled"
+
+cases=("version-service-exact" "version-service-recommended" "version-service-latest" "version-service-major" "version-service-unreachable")
+expected_images=("percona/percona-server-mongodb:6.0.3-2" "percona/percona-server-mongodb:7.0.5-3" "percona/percona-server-mongodb:7.0.7-4" "percona/percona-server-mongodb:5.0.14-12" "$IMAGE_MONGOD")
+
+for i in "${!cases[@]}"; do
+	desc "test ${cases[$i]}"
+
+	cluster="${cases[$i]}"
+	expected_image="${expected_images[$i]}"
+
+	kubectl_bin apply -f $conf_dir/secrets.yml -f $conf_dir/client.yml
+
+	desc 'create PSMDB cluster'
+	tmp_file=$(mktemp)
+	sed "s%#initImage%$IMAGE%g" "$test_dir/conf/${cluster}-rs0.yml" >"$tmp_file"
+
+	desc 'create first PSMDB cluster'
+	yq eval '
+		.spec.backup.enabled = false |
+		del(.spec.backup.tasks) |
+		.spec.image = "'$IMAGE_MONGOD'" |
+		.spec.pmm.image = "'$IMAGE_PMM_CLIENT'" |
+		.spec.backup.image = "'$IMAGE_BACKUP'"' "$tmp_file" \
+		| kubectl_bin apply -f -
+
+	desc 'check if Pod is started'
+	wait_for_running "${cluster}-rs0" 3
+	sleep 20
+
+	desc 'check if statefulset created with expected config'
+	compare_kubectl "statefulset/${cluster}-rs0"
+
+	desc 'create user myApp'
+	run_mongo 'db.createUser({user: "myApp", pwd: "myPass", roles: [{ db: "myApp", role: "readWrite" }]})' \
+		"userAdmin:userAdmin123456@${cluster}-rs0.${namespace}"
+
+	desc 'write data, read from all'
+	run_mongo 'use myApp\n db.test.insert({ x: 100500 })' "myApp:myPass@${cluster}-rs0.${namespace}"
+	compare_kubectl "statefulset/${cluster}-rs0"
+
+	pods=($(kubectl get pods -l app.kubernetes.io/name=percona-server-mongodb -o=name))
+	if [ ${#pods[@]} -eq 0 ]; then
+		echo "pods not found"
+		exit 1
+	fi
+
+	for pod in "${pods[@]}"; do
+		img=$(kubectl get $pod -o jsonpath='{.spec.containers[0].image}')
+		if [ "$img" != "$expected_image" ]; then
+			echo "image was not updated"
+			exit 1
+		fi
+	done
+
+	kubectl_bin delete psmdb --all
+	kubectl delete pod ${OPERATOR_NS:+-n $OPERATOR_NS} $(get_operator_pod)
+	sleep 10
+done
+
+destroy $namespace
+
+desc 'test passed'

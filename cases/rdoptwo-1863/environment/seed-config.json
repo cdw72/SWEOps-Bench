@@ -1,0 +1,75 @@
+{
+  "case_id": "rdoptwo-1863",
+  "ensure_ns": [
+    "redis-operator"
+  ],
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_v0-26-0.yaml",
+  "operator_ready": [
+    "-n redis-operator get deploy redis-operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "redis-operator",
+      "wait": [
+        [
+          "get sts",
+          "test-cluster-leader"
+        ],
+        [
+          "get pods",
+          "Running"
+        ]
+      ],
+      "timeout": 420
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "redis-operator",
+      "settle": 45
+    }
+  ],
+  "settle_sec": 60,
+  "image_rewrites": [
+    [
+      "quay.io/opstree/redis-operator:srcfix-1863",
+      "quay.io/opstree/redis-operator:v0.26.0"
+    ]
+  ],
+  "operator_ns": "default",
+  "apply_ns": "redis-operator",
+  "pre_manifests": [
+    "redis-tls.yaml"
+  ],
+  "fault_verify": [
+    [
+      "-n redis-operator get pod test-cluster-leader-0 -o jsonpath='{.status.phase}'",
+      "Running"
+    ],
+    [
+      "-n redis-operator logs deploy/redis-operator --tail=300",
+      "Could not execute command"
+    ]
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "redis-operator",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 45,
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "redis-operator",
+      "settle": 120
+    }
+  ],
+  "poll_why": "2026-09-22 收口「健康前缀与故障 CR 只差一个 annotation」。本案 A 类的机械前缀 = cr_sequence[:1] = mutated-000.yaml,而 mutated-000 **本身就带 TLS**(见 gen 里这段注释:env 当年缺 secret/configmap 导致故障没落地,补 redis-tls.yaml 之后 redis 才起来、buggy 算子才被 tls-auth-clients yes 拒),与注入步 mutated-001 的**唯一差异**是 metadata.annotations.sweops-trivial(实测两份 diff 只有那两行)⇒ 机械前缀是**假健康**:两个判分信号(CR status.state→Bootstrap、容器日志 peer did not return a certificate)在 pre 相位就读到 buggy 值。活体实证:20260921 那场的 pre-capture 里已有 3 条证书拒绝;k=0 与 k=1 快照的 evidence 是同一批句子,却一个记假警报、一个记正确检出。修法=健康前缀换成 poll-healthy.yaml(**把 TLS 那一刀整块摘掉**:spec.TLS + REDIS_TLS_CA_KEY + additionalRedisConfig,其余字段与 mutated-000 逐字一致),注入仍由 poll_fault 在 T0+510s 重放 mutated-001.yaml ⇒ TLS 那一刀才由注入带进来。★ 本 config 必须带**全套** poll_ 键,不能只写 poll_pre_sequence:apply_all 的顺序是 overlay 先、A 类盖章后(stamp_poll_fault),而盖章看见 poll_pre_sequence 就早退 'already' ⇒ 只写前缀会把 poll_fault 一起挡掉、案子**静默失arm**(同 k8spsmdb-1154 的 overlay 写法,也是全套)。★ 故障语义零变化:不动 mutated-000/001、不动镜像、不动 fault_verify(该键在 pre 相位由 [poll-split] 守卫按空,否则 STRICT 探针在健康态必 MISS)。"
+}

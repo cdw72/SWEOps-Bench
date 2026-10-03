@@ -1,0 +1,58 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "acto-namespace",
+    "get",
+    "deploy",
+    "percona-xtradb-cluster-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "CGO_ENABLED=0",
+   "GO_LDFLAGS=",
+   "go",
+   "build",
+   "-mod=vendor",
+   "-ldflags",
+   "-w -s -X main.GitCommit=e797d016cfbf847ff0a45ce1b1a1d10ad70a2fd3 -X main.GitBranch=v1.11.0 -X main.BuildTime=2022-06-01T00:00:00Z",
+   "-o",
+   "/tmp/rec/bin/percona-xtradb-cluster-operator",
+   "cmd/manager/main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/percona-xtradb-cluster-operator",
+    "/usr/local/bin/percona-xtradb-cluster-operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "acto-namespace/percona-xtradb-cluster-operator"
+ },
+ "settle": 120,
+ "slug": "xtop-1155",
+ "rearm": [
+  [
+   "-n",
+   "acto-namespace",
+   "delete",
+   "pod",
+   "test-cluster-pxc-0",
+   "test-cluster-pxc-1",
+   "test-cluster-pxc-2",
+   "test-cluster-haproxy-0",
+   "test-cluster-haproxy-1",
+   "test-cluster-haproxy-2",
+   "--ignore-not-found"
+  ]
+ ],
+ "rearm_settle": 120
+}

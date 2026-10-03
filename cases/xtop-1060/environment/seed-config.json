@@ -1,0 +1,51 @@
+{
+  "case_id": "xtop-1060",
+  "k8s_version": "v1.23",
+  "operator_bundle": "cw-bundle.yaml",
+  "operator_ready": [
+    "-n acto-namespace get deploy percona-xtradb-cluster-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "mutated-0.yaml",
+      "ns": "acto-namespace",
+      "wait": [
+        [
+          "get perconaxtradbclusters.pxc.percona.com test-cluster -o jsonpath={.status.state}",
+          "ready"
+        ]
+      ],
+      "timeout": 900
+    },
+    {
+      "file": "mutated-1.yaml",
+      "ns": "acto-namespace",
+      "settle": 180
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n acto-namespace get pods -l app.kubernetes.io/name=percona-xtradb-cluster-operator -o jsonpath={.items[0].status.containerStatuses[0].lastState.terminated.exitCode}",
+      "2"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "acto-namespace"
+  ],
+  "apply_ns": "acto-namespace",
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "acto-namespace",
+      "apply",
+      "-f",
+      "/seed-data/mutated-1.yaml"
+    ]
+  ],
+  "poll_fault_settle": 180
+}

@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  creationTimestamp: null
+  name: instrumentation-dotnet-multicontainer
+spec:
+  bindings:
+    - name: podLabelSelector
+      value: app=my-dotnet-multi
+    - name: appPort
+      value: "8080"
+    - name: appPath
+      value: /rolldice
+    - name: collectorLabelSelector
+      value: app.kubernetes.io/name=deployment-collector
+    - name: collectorMetricsPort
+      value: "8888"
+    - name: containerName
+      value: otc-container
+    - name: retryTimeout
+      value: "120"
+    - name: retrySleep
+      value: "5"
+    - name: searchStrings
+      value: |
+        Name: process.cpu.time
+        Description: Total CPU seconds broken down by different states.
+    - name: catchPodLabelSelector
+      value: app=my-dotnet-multi
+    - name: catchContainer
+      value: otc-container
+  steps:
+  - name: Add OpenShift namespace annotations
+    use:
+      template: ../../step-templates/openshift-namespace-annotations.yaml
+  - name: step-01
+    try:
+    - apply:
+        file: 00-install-collector.yaml
+    - apply:
+        file: 00-install-instrumentation.yaml
+    - sleep:
+        duration: 1s
+  - name: step-02
+    try:
+    - apply:
+        file: 01-install-app.yaml
+    - assert:
+        file: 01-assert.yaml
+    catch:
+      - podLogs:
+          selector: app=my-dotnet-multi
+  - name: Make a request to the app
+    use:
+      template: ../../step-templates/app-http-request.yaml
+  - name: Wait for telemetry data
+    use:
+      template: ../../step-templates/wait-for-telemetry.yaml
+  - name: Check the instrumented app has sent the telemetry data successfully
+    use:
+      template: ../../step-templates/validate-collector-metrics.yaml
+  - name: step-03
+    try:
+    - command:
+        env:
+        - name: appnamespace
+          value: ($namespace)
+        entrypoint: kubectl
+        args:
+          - get
+          - pod
+          - -n
+          - $appnamespace
+          - -l
+          - app=my-dotnet-multi
+          - -o
+          - jsonpath={.items[0].metadata.name}
+        outputs:
+        - name: podName
+          value: ($stdout)
+    - apply:
+        file: 02-install-app.yaml
+    - assert:
+        file: 02-assert.yaml
+    - wait:
+        apiVersion: v1
+        kind: Pod
+        name: ($podName)
+        namespace: ($namespace)
+        timeout: 1m
+        for:
+          deletion: {}
+    catch:
+      - podLogs:
+          selector: app=my-dotnet-multi
+  - name: Make a request to the app after update
+    use:
+      template: ../../step-templates/app-http-request.yaml
+  - name: Wait for telemetry data after update
+    use:
+      template: ../../step-templates/wait-for-telemetry.yaml
+  - name: Check telemetry data after update
+    use:
+      template: ../../step-templates/validate-collector-metrics.yaml

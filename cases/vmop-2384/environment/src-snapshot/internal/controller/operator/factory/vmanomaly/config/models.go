@@ -1,0 +1,332 @@
+package config
+
+import (
+	"fmt"
+	"time"
+
+	"gopkg.in/yaml.v2"
+)
+
+type modelDetectionDirection string
+
+const (
+	bothModelDirection          modelDetectionDirection = "both"           //nolint:unused
+	aboveExpectedModelDirection modelDetectionDirection = "above_expected" //nolint:unused
+	belowExpectedModelDirection modelDetectionDirection = "below_expected" //nolint:unused
+)
+
+type commonModelParams struct {
+	Class              string                  `yaml:"class"`
+	Queries            []string                `yaml:"queries,omitempty"`
+	Schedulers         []string                `yaml:"schedulers,omitempty"`
+	ProvideSeries      []string                `yaml:"provide_series,omitempty"`
+	DetectionDirection modelDetectionDirection `yaml:"detection_direction,omitempty"`
+	MinDevFromExpected float64                 `yaml:"min_dev_from_expected,omitempty"`
+	GroupBy            []string                `yaml:"groupby,omitempty"`
+	Scale              []float64               `yaml:"scale,omitempty"`
+	ClipPredictions    bool                    `yaml:"clip_predictions,omitempty"`
+	// ScoreOutsideDataRange is a pointer so an explicit 0.0 survives marshalling.
+	ScoreOutsideDataRange *float64 `yaml:"anomaly_score_outside_data_range,omitempty"`
+}
+
+func (p commonModelParams) queries() []string {
+	return p.Queries
+}
+
+func (p commonModelParams) addPrefix(prefix string) {
+	for i := range p.Schedulers {
+		p.Schedulers[i] = fmt.Sprintf("%s-%s", prefix, p.Schedulers[i])
+	}
+	for i := range p.Queries {
+		p.Queries[i] = fmt.Sprintf("%s-%s", prefix, p.Queries[i])
+	}
+}
+
+func (p commonModelParams) schedulers() []string {
+	return p.Schedulers
+}
+
+func (p *commonModelParams) setClass(class string) {
+	p.Class = class
+}
+
+type anomalyModel interface {
+	validatable
+	setClass(string)
+	schedulers() []string
+	queries() []string
+	addPrefix(string)
+}
+
+type model struct {
+	anomalyModel
+}
+
+func (m *model) init(class string) error {
+	var mdl anomalyModel
+	switch class {
+	case "model.auto.AutoTunedModel", "auto":
+		mdl = new(autoTunedModel)
+	case "model.prophet.ProphetModel", "prophet":
+		mdl = new(prophetModel)
+	case "model.zscore.ZscoreModel", "zscore":
+		mdl = new(zScoreModel)
+	case "model.online.OnlineZscoreModel", "zscore_online":
+		mdl = new(onlineZScoreModel)
+	case "model.holtwinters.HoltWinters", "holtwinters":
+		mdl = new(holtWintersModel)
+	case "model.mad.MADModel", "mad":
+		mdl = new(madModel)
+	case "model.online.OnlineMADModel", "mad_online":
+		mdl = new(onlineMadModel)
+	case "model.rolling_quantile.RollingQuantileModel", "rolling_quantile":
+		mdl = new(rollingQuantileModel)
+	case "model.online.OnlineQuantileModel", "quantile_online":
+		mdl = new(onlineQuantileModel)
+	case "model.std.StdModel", "std":
+		mdl = new(stdModel)
+	case "model.isolation_forest.IsolationForestModel", "isolation_forest":
+		mdl = new(isolationForestModel)
+	case "model.isolation_forest.IsolationForestMultivariateModel", "isolation_forest_multivariate":
+		mdl = new(isolationForestMultivariateModel)
+	default:
+		return fmt.Errorf("model class=%q is not supported", class)
+	}
+	m.anomalyModel = mdl
+	return nil
+}
+
+var (
+	_ yaml.Marshaler   = (*model)(nil)
+	_ yaml.Unmarshaler = (*model)(nil)
+)
+
+// Validate validates raw config
+func (m *model) Validate(data []byte) error {
+	if err := yaml.Unmarshal(data, m); err != nil {
+		return err
+	}
+	return m.validate()
+}
+
+// MarshalYAML implements yaml.Marshaller interface
+func (m *model) MarshalYAML() (any, error) {
+	return m.anomalyModel, nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler interface
+func (m *model) UnmarshalYAML(unmarshal func(any) error) error {
+	var h header
+	if err := unmarshal(&h); err != nil {
+		return err
+	}
+	if err := m.init(h.Class); err != nil {
+		return err
+	}
+	if err := unmarshal(m.anomalyModel); err != nil {
+		return err
+	}
+	return nil
+}
+
+type onlineModel struct {
+	// Decay is a pointer to distinguish "unset" (omitted, vmanomaly applies its default)
+	// from an explicit value, which must be in the range (0, 1].
+	Decay *float64 `yaml:"decay,omitempty"`
+}
+
+func (m *onlineModel) validate() error {
+	// See https://docs.victoriametrics.com/anomaly-detection/components/models/#decay
+	// Valid values are in the range (0, 1]; unset is allowed and defaulted by vmanomaly.
+	if m.Decay != nil && (*m.Decay <= 0 || *m.Decay > 1) {
+		return fmt.Errorf("decay must be in range (0, 1], got %f", *m.Decay)
+	}
+	return nil
+}
+
+type autoTunedModel struct {
+	commonModelParams  `yaml:",inline"`
+	TunedClassName     string                      `yaml:"tuned_class_name"`
+	OptimizationParams autoTunedOptimizationParams `yaml:"optimization_params,omitempty"`
+}
+
+func (m *autoTunedModel) validate() error {
+	return nil
+}
+
+type autoTunedOptimizationParams struct {
+	AnomalyPercentage       float64   `yaml:"anomaly_percentage"`
+	OptimizedBusinessParams []string  `yaml:"optimized_business_params,omitempty"`
+	Seed                    int       `yaml:"seed,omitempty"`
+	Splits                  int       `yaml:"n_splits,omitempty"`
+	Trials                  int       `yaml:"n_trials,omitempty"`
+	Timeout                 *duration `yaml:"timeout,omitempty"`
+}
+
+type holtWintersModel struct {
+	commonModelParams `yaml:",inline"`
+	Frequency         *duration     `yaml:"frequency,omitempty"`
+	Seasonality       *duration     `yaml:"seasonality"`
+	Threshold         float64       `yaml:"z_threshold,omitempty"`
+	Args              yaml.MapSlice `yaml:"args,omitempty"`
+}
+
+func (m *holtWintersModel) validate() error {
+	return nil
+}
+
+type isolationForestModel struct {
+	commonModelParams `yaml:",inline"`
+	// Contamination is a float (e.g. 0.01) or the string "auto"; vmanomaly accepts both.
+	Contamination    any           `yaml:"contamination,omitempty"`
+	SeasonalFeatures []string      `yaml:"seasonal_features,omitempty"`
+	Args             yaml.MapSlice `yaml:"args,omitempty"`
+}
+
+func (m *isolationForestModel) validate() error {
+	return nil
+}
+
+type isolationForestMultivariateModel struct {
+	commonModelParams `yaml:",inline"`
+	// Contamination is a float (e.g. 0.01) or the string "auto"; vmanomaly accepts both.
+	Contamination    any           `yaml:"contamination,omitempty"`
+	SeasonalFeatures []string      `yaml:"seasonal_features,omitempty"`
+	Args             yaml.MapSlice `yaml:"args,omitempty"`
+}
+
+func (m *isolationForestMultivariateModel) validate() error {
+	return nil
+}
+
+type madModel struct {
+	commonModelParams `yaml:",inline"`
+	Threshold         float64 `yaml:"threshold,omitempty"`
+}
+
+func (m *madModel) validate() error {
+	return nil
+}
+
+type onlineMadModel struct {
+	commonModelParams `yaml:",inline"`
+	onlineModel       `yaml:",inline"`
+	Threshold         float64 `yaml:"threshold,omitempty"`
+	MinSamplesSeen    int     `yaml:"min_n_samples_seen,omitempty"`
+	Compression       int     `yaml:"compression,omitempty"`
+}
+
+func (m *onlineMadModel) validate() error {
+	if err := m.onlineModel.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type onlineQuantileModel struct {
+	commonModelParams `yaml:",inline"`
+	onlineModel       `yaml:",inline"`
+	Quantiles         []float64 `yaml:"quantiles,omitempty"`
+	SeasonalInterval  *duration `yaml:"seasonal_interval,omitempty"`
+	MinSubseason      string    `yaml:"min_subseason,omitempty"`
+	UseTransform      bool      `yaml:"use_transform,omitempty"`
+	GlobalSmoothing   float64   `yaml:"global_smoothing,omitempty"`
+	SeasonStartsFrom  time.Time `yaml:"season_starts_from,omitempty"`
+	MinSamplesSeen    int       `yaml:"min_n_samples_seen,omitempty"`
+	Compression       int       `yaml:"compression,omitempty"`
+	IqrThreshold      float64   `yaml:"iqr_threshold,omitempty"`
+}
+
+func (m *onlineQuantileModel) validate() error {
+	if err := m.onlineModel.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type onlineZScoreModel struct {
+	commonModelParams `yaml:",inline"`
+	onlineModel       `yaml:",inline"`
+	Threshold         float64 `yaml:"threshold,omitempty"`
+	MinSamplesSeen    int     `yaml:"min_n_samples_seen,omitempty"`
+}
+
+func (m *onlineZScoreModel) validate() error {
+	if err := m.onlineModel.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type zScoreModel struct {
+	commonModelParams `yaml:",inline"`
+	Threshold         float64 `yaml:"z_threshold,omitempty"`
+}
+
+func (m *zScoreModel) validate() error {
+	return nil
+}
+
+type prophetModel struct {
+	commonModelParams     `yaml:",inline"`
+	Seasonalities         []yaml.MapSlice `yaml:"seasonalities,omitempty"`
+	TZSeasonalities       []tzSeasonality `yaml:"tz_seasonalities,omitempty"`
+	TZAware               bool            `yaml:"tz_aware,omitempty"`
+	TZUseCyclicalEncoding bool            `yaml:"tz_use_cyclical_encoding,omitempty"`
+	Compression           yaml.MapSlice   `yaml:"compression,omitempty"`
+	Args                  yaml.MapSlice   `yaml:"args,omitempty"`
+}
+
+func (m *prophetModel) validate() error {
+	return nil
+}
+
+// tzSeasonality is a single vmanomaly tz_seasonality entry, which may be either
+// a plain string name (e.g. "dow") or an object with keys like name, fourier_order,
+// mode, etc. Both forms are valid in vmanomaly.
+type tzSeasonality struct {
+	val any // string or yaml.MapSlice
+}
+
+var (
+	_ yaml.Marshaler   = tzSeasonality{}
+	_ yaml.Unmarshaler = (*tzSeasonality)(nil)
+)
+
+func (t *tzSeasonality) UnmarshalYAML(unmarshal func(any) error) error {
+	var ms yaml.MapSlice
+	if err := unmarshal(&ms); err == nil {
+		t.val = ms
+		return nil
+	}
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	t.val = s
+	return nil
+}
+
+func (t tzSeasonality) MarshalYAML() (any, error) {
+	return t.val, nil
+}
+
+type rollingQuantileModel struct {
+	commonModelParams `yaml:",inline"`
+	Quantile          float64 `yaml:"quantile,omitempty"`
+	WindowSteps       int     `yaml:"window_steps,omitempty"`
+}
+
+func (m *rollingQuantileModel) validate() error {
+	return nil
+}
+
+type stdModel struct {
+	commonModelParams `yaml:",inline"`
+	Threshold         float64 `yaml:"z_threshold,omitempty"`
+	Period            int     `yaml:"period,omitempty"`
+}
+
+func (m *stdModel) validate() error {
+	return nil
+}

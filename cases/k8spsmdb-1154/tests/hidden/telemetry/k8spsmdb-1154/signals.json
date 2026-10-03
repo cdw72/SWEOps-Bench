@@ -1,0 +1,30 @@
+{
+ "case": "k8spsmdb-1154",
+ "confirmed": [
+  {
+   "kind": "cr_state",
+   "target": "perconaservermongodbs.psmdb.percona.com",
+   "field": "state",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "initializing",
+    "fixed": "ready"
+   },
+   "note": "CR test-cluster:buggy \u5361 initializing / fixed ready(\u95f8\u95e8)"
+  },
+  {
+   "kind": "sts_ready",
+   "target": "test-cluster-rs0",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/3",
+    "fixed": "3/3"
+   },
+   "note": "\u5e8f\u53f7\u65e0\u5173\u7684\u805a\u5408\u5224\u636e(\u65e7\u6761\u76ef rs0-0,\u6c99\u7bb1\u5d29\u7684\u662f rs0-2)"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

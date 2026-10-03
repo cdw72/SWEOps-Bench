@@ -1,0 +1,53 @@
+# 健康态 CR = mutated-000.yaml 去掉 rs0 的 `storage.engine: inMemory`
+# (实测两份只差这一行;`poll_pre_sequence` 用它当健康前缀)。
+#
+# ★ 2026-09-20:与故障态同步补上四个副本段的 `antiAffinityTopologyKey: none`。
+#   两份**必须同时有帽** —— 只给故障态补,pre 相位照样起不来,健康期照样不存在
+#   (N3 是单节点 k3s,缺省按 hostname 打散 ⇒ size=3 永远只起 1 个)。推导见
+#   n3-harbor-task/k8spsmdb-1154/environment/seed-materials/mutated-000.yaml 抬头。
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: test-cluster
+spec:
+  crVersion: 1.16.0
+  image: percona/percona-server-mongodb:7.0.8-5
+  replsets:
+  - affinity:
+      antiAffinityTopologyKey: none
+    name: rs0
+    size: 3
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 3Gi
+  - affinity:
+      antiAffinityTopologyKey: none
+    name: rs1
+    size: 3
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 3Gi
+  secrets:
+    users: test-cluster
+  sharding:
+    configsvrReplSet:
+      affinity:
+        antiAffinityTopologyKey: none
+      size: 3
+      volumeSpec:
+        persistentVolumeClaim:
+          resources:
+            requests:
+              storage: 3Gi
+    enabled: true
+    mongos:
+      affinity:
+        antiAffinityTopologyKey: none
+      size: 3
+  upgradeOptions:
+    apply: disabled
+    schedule: 0 2 * * *

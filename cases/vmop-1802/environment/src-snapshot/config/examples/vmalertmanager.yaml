@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: am-global-config
+  labels:
+    app: vm-operator
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+    route:
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: blackhole
+    receivers:
+    - name: blackhole
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanager
+metadata:
+  name: example
+spec:
+  replicaCount: 1
+  configSecret: am-global-config
+  selectAllByDefault: true
+  storage:
+    volumeClaimTemplate:
+      spec:
+        resources:
+          requests:
+            storage: 2Gi

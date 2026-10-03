@@ -1,0 +1,15 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+  namespace: default
+spec:
+  image:
+    repository: victoriametrics/vmagent
+    tag: v1.129.0
+  remoteWrite:
+  - url: "http://vmsingle-vmsingle-2384.default.svc:8429/api/v1/write"
+    inlineUrlRelabelConfig:
+    - action: drop
+      sourceLabels: ["__name__"]
+      regex: "internal_.*"

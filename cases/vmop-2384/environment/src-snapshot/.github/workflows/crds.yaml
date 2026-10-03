@@ -1,0 +1,87 @@
+name: Update CRDs for chart repo
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  update-crds:
+    if: "!contains(github.event.release.tag_name, '-rc')"
+    runs-on:  vm-runner
+    environment:
+      name: docs
+    steps:
+      - name: Check out operator code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          repository: VictoriaMetrics/operator
+          token: ${{ secrets.VM_BOT_GH_TOKEN }}
+          path: __vm-operator-repo
+          persist-credentials: false
+
+      - name: Check out VM code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          repository: VictoriaMetrics/helm-charts
+          ref: master
+          token: ${{ secrets.VM_BOT_GH_TOKEN }}
+          path: __vm-charts-repo
+          persist-credentials: false
+
+      - name: Check operator chart app version
+        id: chart
+        env:
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          chart_app_version=$(yq -r '.appVersion // ""' charts/victoria-metrics-operator/Chart.yaml)
+          if [ -z "$chart_app_version" ]; then
+            echo "failed to read chart appVersion"
+            exit 1
+          fi
+
+          update=$(python3 ../__vm-operator-repo/hack/compare_versions.py "$chart_app_version" "$RELEASE_VERSION")
+          echo "update=$update" >> "$GITHUB_OUTPUT"
+
+          if [ "$update" = "false" ]; then
+            echo "Skipping CRD update for $RELEASE_VERSION, chart appVersion is $chart_app_version"
+          fi
+        working-directory: __vm-charts-repo
+
+      - name: Import GPG key
+        if: steps.chart.outputs.update == 'true'
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd  # v7.0.0
+        id: import-gpg
+        with:
+          gpg_private_key: ${{ secrets.VM_BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.VM_BOT_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          workdir: __vm-charts-repo
+
+      - name: Update crd yaml in chart repo
+        if: steps.chart.outputs.update == 'true'
+        id: update
+        run: |
+          cp ../__vm-operator-repo/config/crd/overlay/crd.descriptionless.yaml charts/victoria-metrics-operator/charts/crds/crds/crd.yaml
+          cp ../__vm-operator-repo/config/crd/overlay/crd.specless.yaml charts/victoria-metrics-operator/crd.yaml
+          bzip2 -k charts/victoria-metrics-operator/charts/crds/crds/crd.yaml
+          mv charts/victoria-metrics-operator/charts/crds/crds/crd.yaml.bz2 charts/victoria-metrics-operator/charts/crds/files/crd.yaml.bz2
+          echo "BUILDTIME=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_OUTPUT
+        working-directory: __vm-charts-repo
+
+      - name: Create Pull Request
+        if: steps.chart.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          add-paths: charts
+          commit-message: Automatic update operator crds from ${{ github.repository }}@${{ steps.update.outputs.SHORT_SHA }}
+          signoff: true
+          committer: "Github Actions <${{ steps.import-gpg.outputs.email }}>"
+          path: __vm-charts-repo
+          branch: operator-crd-update-${{ steps.update.outputs.BUILDTIME }}
+          token: ${{ secrets.VM_BOT_GH_TOKEN }}
+          delete-branch: true
+          title: Automatic update operator crds from ${{ github.repository }}@${{ steps.update.outputs.SHORT_SHA }}

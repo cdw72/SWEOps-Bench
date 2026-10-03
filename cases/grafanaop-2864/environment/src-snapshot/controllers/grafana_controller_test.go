@@ -1,0 +1,334 @@
+package controllers
+
+import (
+	"testing"
+
+	"github.com/grafana/grafana-operator/v5/api/v1beta1"
+	"github.com/grafana/grafana-operator/v5/pkg/tk8s"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	. "github.com/onsi/ginkgo/v2"
+)
+
+func TestRemoveMissingCRs(t *testing.T) {
+	statusList := v1beta1.NamespacedResourceList{
+		"default/present/uid",
+		"default/missing/uid",
+		"other/missing/uid",
+	}
+
+	dashboards := v1beta1.GrafanaDashboardList{
+		Items: []v1beta1.GrafanaDashboard{
+			{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "present"},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "unrelated-dashboard"},
+			},
+		},
+	}
+
+	// Sanity checks before test
+	assert.Len(t, statusList, 3)
+	assert.Contains(t, statusList, v1beta1.NamespacedResource("default/present/uid"))
+	assert.Contains(t, statusList, v1beta1.NamespacedResource("default/missing/uid"))
+	assert.Contains(t, statusList, v1beta1.NamespacedResource("other/missing/uid"))
+
+	updateStatus := false
+	removeMissingCRs(&statusList, &dashboards, &updateStatus)
+
+	assert.True(t, updateStatus, "Entries were removed but status change was not detected")
+
+	assert.Len(t, statusList, 1)
+	assert.Contains(t, statusList, v1beta1.NamespacedResource("default/present/uid"))
+	assert.NotContains(t, statusList, v1beta1.NamespacedResource("default/missing/uid"))
+	assert.NotContains(t, statusList, v1beta1.NamespacedResource("other/missing/uid"))
+
+	found, _ := statusList.Find("default", "unrelated-dashboard")
+	assert.False(t, found, "Dashboard is not in status and should not be")
+}
+
+func TestGrafanaIndexing(t *testing.T) {
+	reconciler := &GrafanaReconciler{}
+
+	t.Run("indexSecretSource returns secrets from container env secretKeyRef", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				Env: []corev1.EnvVar{
+					{
+						ValueFrom: tk8s.GetEnvVarSecretSource(t, "db-secret", "password"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+		cr.Spec.SetContainers(containers)
+
+		indexFunc := reconciler.indexSecretSource()
+		result := indexFunc(cr)
+
+		expected := []string{"test-namespace/db-secret"}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("indexSecretSource returns secrets from container envFrom secretRef", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						SecretRef: tk8s.GetEnvFromSecretSource(t, "bulk-secret"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetContainers(containers)
+
+		indexFunc := reconciler.indexSecretSource()
+		result := indexFunc(cr)
+
+		expected := []string{"test-namespace/bulk-secret"}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("indexSecretSource returns empty slice when no secret references", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						ConfigMapRef: tk8s.GetEnvFromConfigMapSource(t, "only-a-cm"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetContainers(containers)
+
+		indexFunc := reconciler.indexSecretSource()
+		result := indexFunc(cr)
+
+		require.Empty(t, result)
+	})
+
+	t.Run("indexConfigMapSource returns configmaps from container env configMapKeyRef", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				Env: []corev1.EnvVar{
+					{
+						ValueFrom: tk8s.GetEnvVarConfigMapSource(t, "app-config", "log_level"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetContainers(containers)
+
+		indexFunc := reconciler.indexConfigMapSource()
+		result := indexFunc(cr)
+
+		expected := []string{"test-namespace/app-config"}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("indexConfigMapSource returns configmaps from container envFrom configMapRef", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						ConfigMapRef: tk8s.GetEnvFromConfigMapSource(t, "bulk-cm"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetContainers(containers)
+
+		indexFunc := reconciler.indexConfigMapSource()
+		result := indexFunc(cr)
+
+		expected := []string{"test-namespace/bulk-cm"}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("indexConfigMapSource returns configmaps from volume configMap reference", func(t *testing.T) {
+		volumes := []corev1.Volume{
+			{
+				VolumeSource: tk8s.GetVolumeConfigMapSource(t, "vol-cm"),
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetVolumes(volumes)
+
+		indexFunc := reconciler.indexConfigMapSource()
+		result := indexFunc(cr)
+
+		expected := []string{"test-namespace/vol-cm"}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("indexConfigMapSource returns empty slice when no configmap references", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						SecretRef: tk8s.GetEnvFromSecretSource(t, "only-a-secret"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetContainers(containers)
+
+		indexFunc := reconciler.indexConfigMapSource()
+		result := indexFunc(cr)
+
+		require.Empty(t, result)
+	})
+
+	t.Run("both index functions handle multiple references across containers and initContainers", func(t *testing.T) {
+		containers := []corev1.Container{
+			{
+				Env: []corev1.EnvVar{
+					{
+						ValueFrom: tk8s.GetEnvVarSecretSource(t, "secret1", "key"),
+					},
+					{
+						ValueFrom: tk8s.GetEnvVarConfigMapSource(t, "cm1", "key"),
+					},
+				},
+			},
+		}
+
+		initContainers := []corev1.Container{
+			{
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						SecretRef: tk8s.GetEnvFromSecretSource(t, "secret2"),
+					},
+					{
+						ConfigMapRef: tk8s.GetEnvFromConfigMapSource(t, "cm2"),
+					},
+				},
+			},
+		}
+
+		cr := &v1beta1.Grafana{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-namespace",
+				Name:      "test-grafana",
+			},
+		}
+
+		cr.Spec.SetContainers(containers)
+		cr.Spec.SetInitContainers(initContainers)
+
+		secretIndexFunc := reconciler.indexSecretSource()
+		secretResult := secretIndexFunc(cr)
+		assert.Equal(t, []string{"test-namespace/secret1", "test-namespace/secret2"}, secretResult)
+
+		cmIndexFunc := reconciler.indexConfigMapSource()
+		cmResult := cmIndexFunc(cr)
+		assert.Equal(t, []string{"test-namespace/cm1", "test-namespace/cm2"}, cmResult)
+	})
+}
+
+var _ = Describe("Grafana Reconciler: Provoke Conditions", func() {
+	t := GinkgoT()
+
+	tests := []struct {
+		name string
+		meta metav1.ObjectMeta
+		spec v1beta1.GrafanaSpec
+		want metav1.Condition
+	}{
+		{
+			name: ".spec.suspend=true",
+			meta: objectMetaSuspended,
+			spec: v1beta1.GrafanaSpec{
+				Suspend: true,
+			},
+			want: metav1.Condition{
+				Type:   conditionSuspended,
+				Reason: conditionReasonReconcileSuspended,
+			},
+		},
+		// TODO When InvalidSpec is implemented for external instances admin secret referencing a non-existing secret
+	}
+
+	for _, tt := range tests {
+		It(tt.name, func() {
+			cr := &v1beta1.Grafana{
+				ObjectMeta: tt.meta,
+				Spec:       tt.spec,
+			}
+
+			err := cl.Create(testCtx, cr)
+			require.NoError(t, err)
+
+			r := GrafanaReconciler{Client: cl, Scheme: cl.Scheme()}
+			req := tk8s.GetRequest(t, cr)
+
+			_, err = r.Reconcile(testCtx, req)
+			require.NoError(t, err)
+
+			cr = &v1beta1.Grafana{}
+
+			err = r.Get(testCtx, req.NamespacedName, cr)
+			require.NoError(t, err)
+
+			hasCondition := tk8s.HasCondition(t, cr, tt.want)
+			assert.True(t, hasCondition)
+		})
+	}
+})

@@ -1,0 +1,144 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: cross-site-sharded-main
+spec:
+  #platform: openshift
+  clusterServiceDNSMode: External
+  unmanaged: false
+  image:
+  imagePullPolicy: Always
+  secrets:
+    users: cross-site-sharded-main-secrets
+    ssl: cross-site-sharded-main-ssl
+    sslInternal: cross-site-sharded-main-ssl-internal
+  replsets:
+  - name: rs0
+    size: 3
+    affinity:
+      antiAffinityTopologyKey: none
+    podDisruptionBudget:
+      maxUnavailable: 1
+    expose:
+      enabled: true
+      exposeType: ClusterIp
+    nonvoting:
+      enabled: false
+      size: 3
+      affinity:
+        antiAffinityTopologyKey: none
+      podDisruptionBudget:
+        maxUnavailable: 1
+      resources:
+        limits:
+          cpu: "300m"
+          memory: "0.5G"
+        requests:
+          cpu: "300m"
+          memory: "0.5G"
+      volumeSpec:
+        persistentVolumeClaim:
+          resources:
+            requests:
+              storage: 1Gi
+    arbiter:
+      enabled: false
+      size: 1
+      affinity:
+        antiAffinityTopologyKey: none
+    resources:
+      limits:
+        cpu: "300m"
+        memory: "0.5G"
+      requests:
+        cpu: "300m"
+        memory: "0.5G"
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 3Gi
+  - name: rs1
+    size: 3
+    affinity:
+      antiAffinityTopologyKey: none
+    podDisruptionBudget:
+      maxUnavailable: 1
+    expose:
+      enabled: true
+      exposeType: ClusterIp
+    nonvoting:
+      enabled: false
+      size: 3
+      affinity:
+        antiAffinityTopologyKey: none
+      podDisruptionBudget:
+        maxUnavailable: 1
+      resources:
+        limits:
+          cpu: "300m"
+          memory: "0.5G"
+        requests:
+          cpu: "300m"
+          memory: "0.5G"
+      volumeSpec:
+        persistentVolumeClaim:
+          resources:
+            requests:
+              storage: 1Gi
+    arbiter:
+      enabled: false
+      size: 1
+      affinity:
+        antiAffinityTopologyKey: none
+    resources:
+      limits:
+        cpu: "300m"
+        memory: "0.5G"
+      requests:
+        cpu: "300m"
+        memory: "0.5G"
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 3Gi
+  sharding:
+    enabled: true
+    configsvrReplSet:
+      size: 3
+      affinity:
+        antiAffinityTopologyKey: none
+      podDisruptionBudget:
+        maxUnavailable: 1
+      expose:
+        enabled: true
+        exposeType: ClusterIp
+      resources:
+        limits:
+          cpu: "300m"
+          memory: "0.5G"
+        requests:
+          cpu: "300m"
+          memory: "0.5G"
+      volumeSpec:
+        persistentVolumeClaim:
+          resources:
+            requests:
+              storage: 3Gi
+
+    mongos:
+      size: 3
+      affinity:
+        antiAffinityTopologyKey: none
+      podDisruptionBudget:
+        maxUnavailable: 1
+      resources:
+        limits:
+          cpu: "300m"
+          memory: "0.5G"
+        requests:
+          cpu: "300m"
+          memory: "0.5G"
+      expose:
+        exposeType: ClusterIp

@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+    control-plane: controller-manager
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+    control-plane: controller-manager
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-operator
+      control-plane: controller-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opentelemetry-operator
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - "--zap-log-level=info"
+        - "--zap-time-encoding=rfc3339nano"
+        image: controller
+        name: manager
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        env:
+          - name: SERVICE_ACCOUNT_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.serviceAccountName
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: METRICS_ADDR
+            value: ":8443"
+          - name: METRICS_SECURE
+            value: "true"
+          - name: ENABLE_LEADER_ELECTION
+            value: "true"
+          - name: ENABLE_NGINX_AUTO_INSTRUMENTATION
+            value: "true"
+      serviceAccountName: controller-manager
+      terminationGracePeriodSeconds: 10

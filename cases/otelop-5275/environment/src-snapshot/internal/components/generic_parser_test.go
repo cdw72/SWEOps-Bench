@@ -1,0 +1,625 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package components_test
+
+import (
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/go-logr/logr"
+	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/open-telemetry/opentelemetry-operator/internal/components"
+)
+
+func TestGenericParser_GetPorts(t *testing.T) {
+	type args struct {
+		logger logr.Logger
+		config any
+	}
+	type testCase[T any] struct {
+		name    string
+		g       *components.GenericParser[T]
+		args    args
+		want    []corev1.ServicePort
+		wantErr assert.ErrorAssertionFunc
+	}
+
+	tests := []testCase[*components.SingleEndpointConfig]{
+		{
+			name: "valid config with endpoint",
+			g:    components.NewSinglePortParserBuilder("test", 0).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": "http://localhost:8080",
+				},
+			},
+			want: []corev1.ServicePort{
+				{
+					Name: "test",
+					Port: 8080,
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid config with listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"listen_address": "0.0.0.0:9090",
+				},
+			},
+			want: []corev1.ServicePort{
+				{
+					Name: "test",
+					Port: 9090,
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid config with listen_address with settings",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithProtocol(corev1.ProtocolUDP).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"listen_address": "0.0.0.0:9090",
+				},
+			},
+			want: []corev1.ServicePort{
+				{
+					Name:     "test",
+					Port:     9090,
+					Protocol: corev1.ProtocolUDP,
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "invalid config with no endpoint or listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{},
+			},
+			want:    []corev1.ServicePort{},
+			wantErr: assert.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.g.Ports(tt.args.logger, "test", tt.args.config)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetRBACRules(%v, %v)", tt.args.logger, tt.args.config)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "GetRBACRules(%v, %v)", tt.args.logger, tt.args.config)
+		})
+	}
+}
+
+func TestGenericParser_GetRBACRules(t *testing.T) {
+	type args struct {
+		logger logr.Logger
+		config any
+	}
+	type testCase[T any] struct {
+		name    string
+		g       *components.GenericParser[T]
+		args    args
+		want    []rbacv1.PolicyRule
+		wantErr assert.ErrorAssertionFunc
+	}
+
+	rbacGenFunc := func(_ logr.Logger, config *components.SingleEndpointConfig) ([]rbacv1.PolicyRule, error) {
+		if config.Endpoint == "" && config.ListenAddress == "" {
+			return nil, errors.New("either endpoint or listen_address must be specified")
+		}
+		return []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
+				Verbs:     []string{"get", "list"},
+			},
+		}, nil
+	}
+
+	tests := []testCase[*components.SingleEndpointConfig]{
+		{
+			name: "valid config with endpoint",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithRbacGen(rbacGenFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": "http://localhost:8080",
+				},
+			},
+			want: []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+					Verbs:     []string{"get", "list"},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid config with listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithRbacGen(rbacGenFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"listen_address": "0.0.0.0:9090",
+				},
+			},
+			want: []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+					Verbs:     []string{"get", "list"},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "invalid config with no endpoint or listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithRbacGen(rbacGenFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{},
+			},
+			want:    nil,
+			wantErr: assert.Error,
+		},
+		{
+			name: "Generic works",
+			g:    components.NewBuilder[*components.SingleEndpointConfig]().WithName("test").MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{},
+			},
+			want:    nil,
+			wantErr: assert.NoError,
+		},
+		{
+			name: "failed to parse config",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithRbacGen(rbacGenFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: func() {},
+			},
+			want:    nil,
+			wantErr: assert.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.g.GetRBACRules(tt.args.logger, tt.args.config)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetRBACRules(%v, %v)", tt.args.logger, tt.args.config)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "GetRBACRules(%v, %v)", tt.args.logger, tt.args.config)
+		})
+	}
+}
+
+func TestGenericParser_GetProbe(t *testing.T) {
+	type args struct {
+		logger logr.Logger
+		config any
+	}
+	type testCase[T any] struct {
+		name             string
+		g                *components.GenericParser[T]
+		args             args
+		livenessProbe    *corev1.Probe
+		readinessProbe   *corev1.Probe
+		startupProbe     *corev1.Probe
+		wantLivenessErr  assert.ErrorAssertionFunc
+		wantReadinessErr assert.ErrorAssertionFunc
+		wantStartupErr   assert.ErrorAssertionFunc
+	}
+	probeFunc := func(_ logr.Logger, config *components.SingleEndpointConfig) (*corev1.Probe, error) {
+		if config.Endpoint == "" && config.ListenAddress == "" {
+			return nil, errors.New("either endpoint or listen_address must be specified")
+		}
+		return &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/hello",
+					Port: intstr.FromInt32(8080),
+				},
+			},
+		}, nil
+	}
+
+	tests := []testCase[*components.SingleEndpointConfig]{
+		{
+			name: "valid config with endpoint",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithReadinessGen(probeFunc).WithLivenessGen(probeFunc).WithStartupGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": "http://localhost:8080",
+				},
+			},
+			livenessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/hello",
+						Port: intstr.FromInt32(8080),
+					},
+				},
+			},
+			readinessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/hello",
+						Port: intstr.FromInt32(8080),
+					},
+				},
+			},
+			startupProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/hello",
+						Port: intstr.FromInt32(8080),
+					},
+				},
+			},
+			wantLivenessErr:  assert.NoError,
+			wantReadinessErr: assert.NoError,
+			wantStartupErr:   assert.NoError,
+		},
+		{
+			name: "valid config with listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithReadinessGen(probeFunc).WithLivenessGen(probeFunc).WithStartupGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"listen_address": "0.0.0.0:9090",
+				},
+			},
+			livenessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/hello",
+						Port: intstr.FromInt32(8080),
+					},
+				},
+			},
+			readinessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/hello",
+						Port: intstr.FromInt32(8080),
+					},
+				},
+			},
+			startupProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/hello",
+						Port: intstr.FromInt32(8080),
+					},
+				},
+			},
+			wantLivenessErr:  assert.NoError,
+			wantReadinessErr: assert.NoError,
+			wantStartupErr:   assert.NoError,
+		},
+		{
+			name: "readiness invalid config with no endpoint or listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithReadinessGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{},
+			},
+			readinessProbe:   nil,
+			livenessProbe:    nil,
+			startupProbe:     nil,
+			wantReadinessErr: assert.Error,
+			wantLivenessErr:  assert.NoError,
+			wantStartupErr:   assert.NoError,
+		},
+		{
+			name: "liveness invalid config with no endpoint or listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithLivenessGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{},
+			},
+			readinessProbe:   nil,
+			livenessProbe:    nil,
+			startupProbe:     nil,
+			wantReadinessErr: assert.NoError,
+			wantLivenessErr:  assert.Error,
+			wantStartupErr:   assert.NoError,
+		},
+		{
+			name: "startup invalid config with no endpoint or listen_address",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithStartupGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{},
+			},
+			readinessProbe:   nil,
+			livenessProbe:    nil,
+			startupProbe:     nil,
+			wantReadinessErr: assert.NoError,
+			wantLivenessErr:  assert.NoError,
+			wantStartupErr:   assert.Error,
+		},
+		{
+			name: "liveness failed to parse config",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithLivenessGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: func() {},
+			},
+			livenessProbe:    nil,
+			readinessProbe:   nil,
+			startupProbe:     nil,
+			wantLivenessErr:  assert.Error,
+			wantReadinessErr: assert.NoError,
+			wantStartupErr:   assert.NoError,
+		},
+		{
+			name: "readiness failed to parse config",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithReadinessGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: func() {},
+			},
+			livenessProbe:    nil,
+			readinessProbe:   nil,
+			startupProbe:     nil,
+			wantLivenessErr:  assert.NoError,
+			wantReadinessErr: assert.Error,
+			wantStartupErr:   assert.NoError,
+		},
+		{
+			name: "startup failed to parse config",
+			g:    components.NewSinglePortParserBuilder("test", 0).WithStartupGen(probeFunc).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: func() {},
+			},
+			livenessProbe:    nil,
+			readinessProbe:   nil,
+			startupProbe:     nil,
+			wantLivenessErr:  assert.NoError,
+			wantReadinessErr: assert.NoError,
+			wantStartupErr:   assert.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			livenessProbe, err := tt.g.GetLivenessProbe(tt.args.logger, tt.args.config)
+			if !tt.wantLivenessErr(t, err, fmt.Sprintf("GetLivenessProbe(%v, %v)", tt.args.logger, tt.args.config)) {
+				return
+			}
+			assert.Equalf(t, tt.livenessProbe, livenessProbe, "GetLivenessProbe(%v, %v)", tt.args.logger, tt.args.config)
+			readinessProbe, err := tt.g.GetReadinessProbe(tt.args.logger, tt.args.config)
+			if !tt.wantReadinessErr(t, err, fmt.Sprintf("GetReadinessProbe(%v, %v)", tt.args.logger, tt.args.config)) {
+				return
+			}
+			assert.Equalf(t, tt.readinessProbe, readinessProbe, "GetReadinessProbe(%v, %v)", tt.args.logger, tt.args.config)
+			startupProbe, err := tt.g.GetStartupProbe(tt.args.logger, tt.args.config)
+			if !tt.wantStartupErr(t, err, fmt.Sprintf("GetStartupProbe(%v, %v)", tt.args.logger, tt.args.config)) {
+				return
+			}
+			assert.Equalf(t, tt.startupProbe, startupProbe, "GetStartupProbe(%v, %v)", tt.args.logger, tt.args.config)
+		})
+	}
+}
+
+func TestGenericParser_GetDefaultConfig(t *testing.T) {
+	type args struct {
+		logger     logr.Logger
+		config     any
+		tlsProfile components.TLSProfile
+	}
+	type testCase[T any] struct {
+		name    string
+		g       *components.GenericParser[T]
+		args    args
+		want    any
+		wantErr assert.ErrorAssertionFunc
+	}
+
+	tests := []testCase[*components.SingleEndpointConfig]{
+		{
+			name: "no settings or defaultsApplier returns config",
+			g:    &components.GenericParser[*components.SingleEndpointConfig]{},
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": "http://localhost:8080",
+				},
+			},
+			want: map[string]any{
+				"endpoint": "http://localhost:8080",
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "empty defaultRecAddr returns config",
+			g:    components.NewSinglePortParserBuilder("test", 0).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": "http://localhost:8080",
+				},
+			},
+			want: map[string]any{
+				"endpoint": "http://localhost:8080",
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid settings with defaultsApplier",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": nil,
+				},
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:8080",
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid settings with defaultsApplier and TLS profile",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": nil,
+					"tls":      map[string]any{},
+				},
+				tlsProfile: components.NewStaticTLSProfile(tls.VersionTLS12, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}),
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:8080",
+				"tls": map[string]any{
+					"min_version":   "1.2",
+					"cipher_suites": []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "TLS profile not injected when config.TLS is nil",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": nil,
+					// no "tls" key - TLS config is nil
+				},
+				tlsProfile: components.NewStaticTLSProfile(tls.VersionTLS12, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}),
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:8080",
+				// no TLS injected because config.TLS was nil
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "TLS profile does not override existing MinVersion",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": nil,
+					"tls": map[string]any{
+						"min_version": "1.3", // already set
+					},
+				},
+				tlsProfile: components.NewStaticTLSProfile(tls.VersionTLS12, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}),
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:8080",
+				"tls": map[string]any{
+					"min_version":   "1.3", // not overridden
+					"cipher_suites": []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "TLS profile does not override existing Ciphers",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": nil,
+					"tls": map[string]any{
+						"cipher_suites": []string{"TLS_AES_256_GCM_SHA384"}, // already set
+					},
+				},
+				tlsProfile: components.NewStaticTLSProfile(tls.VersionTLS12, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}),
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:8080",
+				"tls": map[string]any{
+					"min_version":   "1.2",
+					"cipher_suites": []string{"TLS_AES_256_GCM_SHA384"}, // not overridden
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "TLS 1.3 profile does not inject cipher suites",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": nil,
+					"tls":      map[string]any{},
+				},
+				tlsProfile: components.NewStaticTLSProfile(tls.VersionTLS13, []uint16{tls.TLS_AES_128_GCM_SHA256}),
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:8080",
+				"tls": map[string]any{
+					"min_version": "1.3",
+					// no cipher_suites - TLS 1.3 doesn't allow configuring them
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid settings with defaultsApplier doesnt override",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: map[string]any{
+					"endpoint": "127.0.0.1:9090",
+				},
+			},
+			want: map[string]any{
+				"endpoint": "127.0.0.1:9090",
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "invalid config fails to decode",
+			g:    components.NewSinglePortParserBuilder("test", 8080).WithDefaultRecAddress("127.0.0.1").WithDefaultsApplier(components.AddressDefaulter).MustBuild(),
+			args: args{
+				logger: logr.Discard(),
+				config: "invalid_config",
+			},
+			want:    nil,
+			wantErr: assert.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var opts []components.DefaultOption
+			if tt.args.tlsProfile != nil {
+				opts = append(opts, components.WithTLSProfile(tt.args.tlsProfile))
+			}
+			got, err := tt.g.GetDefaultConfig(tt.args.logger, tt.args.config, opts...)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetDefaultConfig(%v, %v)", tt.args.logger, tt.args.config)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "GetDefaultConfig(%v, %v)", tt.args.logger, tt.args.config)
+		})
+	}
+}

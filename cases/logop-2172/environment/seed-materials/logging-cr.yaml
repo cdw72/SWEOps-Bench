@@ -1,0 +1,23 @@
+# logop-2172: the Logging CR is only the entry point -- logging_controller
+# gathers the FluentbitAgents whose spec.loggingRef equals this Logging's (both
+# empty here, so they match) and appends the fluentbit reconciler for each of
+# them (controllers/logging/logging_controller.go:261-285). The panic happens in
+# that reconciler, so the CR does not need an aggregator section.
+#
+# DELIBERATE DEVIATION from seed_sieve_case.py's LOGOP_LOGGING_CR: the sieve
+# seed carried syslogNG: {jsonKeyDelim: '#', metrics: {serviceMonitor: true}},
+# which makes the operator deploy a whole axosyslog StatefulSet + config
+# reloader + metrics exporter (4 more image pulls at seed time, and a second,
+# unrelated thing for the agent to look at). The fault needs neither -- the nil
+# metrics section comes from the FluentbitAgent -- so the N3 env drops it to
+# stay self-contained and keep the broken signal single. Verified against the
+# 6.3.1 source: nothing between LoggingResourcesFor and the Fluentbits switch
+# requires an aggregator (AreMultipleAggregatorsSet only rejects having BOTH; the
+# validation reconciler only validates outputs; the Logging CRD declares no
+# required spec fields).
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Logging
+metadata:
+  name: logop
+spec:
+  controlNamespace: default

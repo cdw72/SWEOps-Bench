@@ -1,0 +1,139 @@
+# poll 健康前缀 —— xtop-1155(2026-09-24 重构,用户拍板「一个改一个换」)
+#
+# 与 mutated-0.yaml 的差异**只有三处**(N3 旧路径原样保留,mutated-0.yaml 不动):
+#   1. allowUnsafeConfigurations: false -> true   # size=2 过 CR 校验 webhhook
+#   2. spec.pxc.size: 3 -> 2                      # 2 节点 + required hostname 反亲和 => 恰好 2/2 健康(带 primary)
+#   3. spec.haproxy.affinity.antiAffinityTopologyKey: hostname -> none  # haproxy 3/3 不搁浅
+# pxc 亲和**保留 hostname**(坏配置仍在):故障改由 trigger 运行期注入 —— scene.sh 把
+# size 2->3,STS 直接创建 pxc-2(序号最高、最后创建),两节点已被占 => pxc-2 必然
+# Pending,零竞态、不改模板、不触发 smartUpdate 滚动。之后纠错步(亲和->none)被
+# buggy 的 smartUpdate 早退(ready 2 < replicas 3)卡死;fixed 滚到 3/3。GT 钉位
+# (pkg/controller/pxc/upgrade.go:smartUpdate)与 fault_verify_after marker 契约不变。
+# pre 相位 pxc-2 不存在 => 探针 NotFound=未观测=0 针(poll-config._comment 已载)。
+#
+apiVersion: pxc.percona.com/v1-11-0
+kind: PerconaXtraDBCluster
+metadata:
+  finalizers:
+  - delete-pxc-pods-in-order
+  name: test-cluster
+spec:
+  allowUnsafeConfigurations: true
+  backup:
+    image: percona/percona-xtradb-cluster-operator:1.11.0-pxc8.0-backup
+    imagePullPolicy: IfNotPresent
+    pitr:
+      enabled: false
+      storageName: STORAGE-NAME-HERE
+      timeBetweenUploads: 60
+    schedule:
+    - keep: 3
+      name: sat-night-backup
+      schedule: 0 0 * * 6
+      storageName: s3-us-west
+    - keep: 5
+      name: daily-backup
+      schedule: 0 0 * * *
+      storageName: fs-pvc
+    storages:
+      fs-pvc:
+        type: filesystem
+        volume:
+          persistentVolumeClaim:
+            accessModes:
+            - ReadWriteOnce
+            resources:
+              requests:
+                storage: 6G
+      s3-us-west:
+        s3:
+          bucket: S3-BACKUP-BUCKET-NAME-HERE
+          credentialsSecret: my-cluster-name-backup-s3
+          region: us-west-2
+        type: s3
+        verifyTLS: true
+  crVersion: 1.11.0
+  enableCRValidationWebhook: true
+  haproxy:
+    affinity:
+      antiAffinityTopologyKey: none
+    enabled: true
+    gracePeriod: 30
+    image: percona/percona-xtradb-cluster-operator:1.11.0-haproxy
+    imagePullPolicy: IfNotPresent
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 600m
+        memory: 1G
+    size: 3
+  logcollector:
+    enabled: true
+    image: percona/percona-xtradb-cluster-operator:1.11.0-logcollector
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 200m
+        memory: 100M
+  pmm:
+    enabled: false
+    image: percona/pmm-client:2.28.0
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 300m
+        memory: 150M
+    serverHost: monitoring-service
+  proxysql:
+    affinity:
+      antiAffinityTopologyKey: kubernetes.io/hostname
+    enabled: false
+    gracePeriod: 30
+    image: percona/percona-xtradb-cluster-operator:1.11.0-proxysql
+    imagePullPolicy: IfNotPresent
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 600m
+        memory: 1G
+    size: 3
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 2G
+  pxc:
+    affinity:
+      antiAffinityTopologyKey: kubernetes.io/hostname
+    autoRecovery: true
+    enabled: true
+    gracePeriod: 30
+    image: percona/percona-xtradb-cluster:8.0.27-18.1
+    imagePullPolicy: IfNotPresent
+    livenessDelaySec: 300
+    # N3 变体(2026-09-12):不打 nodeSelector。pin(v1.11.0)的 updatePod
+    # 只把 podSpec 的一部分字段抄进 sts 模板(Affinity 在、NodeSelector
+    # 不在 = K8SPXC-1067 的 bug),selector 一旦落地就再也改不掉 ->
+    # 纠正无从谈起。改用 CR 本来就带的 antiAffinityTopologyKey:
+    # hostname(必需反亲和)+ 2 个可调度节点:3 副本里 pxc-2 永远排不下
+    # = 坏配置,用户把它改成 none 是可传播的纠正。
+    # 详见 triggers/xtop-1155-scene.sh 头注。
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 600m
+        memory: 1G
+    size: 2
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 6Gi
+  updateStrategy: SmartUpdate
+  upgradeOptions:
+    apply: 8.0-recommended
+    schedule: 0 4 * * *
+    versionServiceEndpoint: https://check.percona.com

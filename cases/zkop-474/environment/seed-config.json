@@ -1,0 +1,63 @@
+{
+  "case_id": "zkop-474",
+  "ensure_ns": [
+    "zookeeper-operator"
+  ],
+  "k8s_version": "v1.21",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n zookeeper-operator get deploy acto-test-operator-zookeeper-operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "zookeeper-operator",
+      "wait": [
+        [
+          "get sts",
+          "cluster"
+        ],
+        [
+          "get pods",
+          "Running"
+        ]
+      ],
+      "timeout": 420
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "zookeeper-operator",
+      "settle": 60
+    }
+  ],
+  "settle_sec": 60,
+  "image_rewrites": [
+    [
+      "pravega/zookeeper-operator:srcbuggy-474",
+      "tylergu1998/zookeeper-operator:test"
+    ]
+  ],
+  "operator_ns": "default",
+  "ns_rewrites": [
+    [
+      "acto-namespace",
+      "zookeeper-operator"
+    ]
+  ],
+  "apply_ns": "zookeeper-operator",
+  "pre_manifests": [
+    "standard-sc.yaml"
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "zookeeper-operator",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_fault_settle": 60
+}

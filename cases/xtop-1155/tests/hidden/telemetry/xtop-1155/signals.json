@@ -1,0 +1,30 @@
+{
+ "case": "xtop-1155",
+ "confirmed": [
+  {
+   "kind": "cr_state",
+   "target": "perconaxtradbclusters.pxc.percona.com",
+   "field": "state",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "initializing",
+    "fixed": "ready"
+   },
+   "note": "buggy \u5361 gate \u6c38\u4e0d\u6536\u655b(initializing);fixed 3/3 ready"
+  },
+  {
+   "kind": "pod_status",
+   "target": "test-cluster-pxc-2",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/3/Pending",
+    "fixed": "3/3/Running"
+   },
+   "note": "\u7b2c 3 \u526f\u672c:buggy \u5e26\u574f selector \u6c38\u4e0d\u6eda(Pending);fixed \u6eda\u901a Running"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

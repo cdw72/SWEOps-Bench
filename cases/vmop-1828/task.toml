@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = []
+
+[task]
+name = "sweops/vmop-1828-res"
+version = "1.0.0"
+description = "SWEOps Kubernetes operator incident resolution (root-cause + fix + recover): vmop-1828"
+keywords = ["kubernetes", "operator", "rca", "diagnosis", "sre"]
+
+[metadata]
+
+[verifier]
+timeout_sec = 1800.0
+collect = []
+
+[verifier.env]
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+network_mode = "public"
+build_timeout_sec = 3600.0
+os = "linux"
+mcp_servers = []
+
+[environment.env]
+
+[solution.env]
+
+[[task.authors]]
+name = "SWEOps"
+github = "sweops"
+
+# ---- SWEOps poll protocol: two sequential rounds over one environment ----
+[[steps]]
+name = "k0-baseline"
+
+  [steps.agent]
+  timeout_sec = 900.0
+
+[[steps]]
+name = "k1-incident"
+
+  [steps.agent]
+  timeout_sec = 1800.0

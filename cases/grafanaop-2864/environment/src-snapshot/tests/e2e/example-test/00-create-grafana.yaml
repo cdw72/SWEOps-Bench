@@ -1,0 +1,46 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  labels:
+    dashboards: "grafana"
+spec:
+  version: (env('GF_TEST_CONTAINER_VERSION'))
+  disableDefaultAdminSecret: (semver_compare(env('GF_TEST_CONTAINER_VERSION'),'>=12.2.x')) # Ensure config is valid without admin secret
+  client:
+    useKubeAuth: (semver_compare(env('GF_TEST_CONTAINER_VERSION'),'>=12.2.x'))
+    preferIngress: false
+  config:
+    log:
+      mode: "console"
+    auth:
+      disable_login_form: "false"
+    security:
+      admin_user: root
+      admin_password: secret
+    ## Required to test creation of Grafana-managed recording rules
+    feature_toggles:
+      grafanaManagedRecordingRules: "true"
+    recording_rules:
+      enabled: "true"
+      url: http://prometheus:9090/api/prom/push
+    auth.jwt:
+      enabled: "true"
+      header_name: Authorization
+      expect_claims: '{"aud": ["operator.grafana.com"]}'
+      username_claim: sub
+      email_claim: sub
+      auto_sign_up: "true"
+      role_attribute_path: "contains(sub, 'system:serviceaccount:default:grafana-operator-controller-manager') && 'GrafanaAdmin' || 'None'" # Assigns normal Admin unless allow_assign_grafana_admin is enabled
+      role_attribute_strict: "true" # Disables auto_assign_org_role
+      jwk_set_url: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}/openid/v1/jwks
+      jwk_set_bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tls_client_ca: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: grafana
+              readinessProbe:
+                periodSeconds: 2

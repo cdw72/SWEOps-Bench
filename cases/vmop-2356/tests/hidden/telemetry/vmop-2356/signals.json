@@ -1,0 +1,19 @@
+{
+ "case": "vmop-2356",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "unmarshal_anomaly_2356",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 6,
+    "fixed": 0
+   },
+   "note": "field seasonalities not found in config.prophetModel(buggy \u7279\u6709;cr_spec configRawYaml \u4e24\u4fa7\u540c\u585e,\u6f02\u79fb\u5728\u65e5\u5fd7\u5c42\u4e0d\u5728 spec \u5c42)"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,29 @@
+{
+ "case": "rdoptwo-1540",
+ "confirmed": [
+  {
+   "kind": "sts_ready",
+   "target": "rc-leader",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/3",
+    "fixed": "3/3"
+   },
+   "note": "initContainer \u6302\u8f7d\u975e\u6cd5 -> pod \u521b\u5efa\u88ab\u62d2,buggy \u5168\u5957 sts/pod \u7f3a\u5931"
+  },
+  {
+   "kind": "event_msg",
+   "target": "FailedCreate: volumeMounts",
+   "judge": "absent",
+   "values": {
+    "buggy": "create Pod rc-leader-N \u2026 invalid: spec.initContainers[N].volumeMounts[N].name: Not found",
+    "fixed": "(\u65e0)"
+   },
+   "note": "2026-09-10 \u8865:#1540 \u7684\u9010\u5b57\u8bc1\u636e(volumeMounts \u5f15\u7528\u4e0d\u5b58\u5728\u7684 initConfig \u5377);sts_ready \u53ea\u8bf4\u7ed3\u679c,\u8fd9\u6761\u8bf4\u673a\u5236"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

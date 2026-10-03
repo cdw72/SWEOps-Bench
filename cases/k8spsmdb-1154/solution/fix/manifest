@@ -1,0 +1,4 @@
+pkg/apis/psmdb/v1/psmdb_defaults.go
+pkg/apis/psmdb/v1/psmdb_types.go
+pkg/psmdb/container.go
+pkg/psmdb/statefulset.go

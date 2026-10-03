@@ -1,0 +1,16 @@
+ignore_files:
+  - config/crd/bases/postgresql.cnpg.io_poolers.yaml
+  - tests/e2e/fixtures/upgrade/current-manifest.yaml
+  - tests/e2e/fixtures/upgrade/current-manifest-prime.yaml
+  - hack/install-config.yaml.template
+
+# Default internal rules refer https://github.com/get-woke/woke/blob/main/internal/rule/default.yaml
+rules:
+  - name: master
+    terms:
+      - master
+    alternatives:
+      - leader
+      - primary
+    options:
+      word_boundary: true

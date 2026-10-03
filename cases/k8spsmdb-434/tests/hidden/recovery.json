@@ -1,0 +1,48 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "psmdb",
+    "get",
+    "deploy",
+    "percona-server-mongodb-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "GOOS=linux",
+   "GOARCH=amd64",
+   "CGO_ENABLED=0",
+   "GO_LDFLAGS=",
+   "go",
+   "build",
+   "-mod=vendor",
+   "-ldflags",
+   "-w -s -X main.GitCommit= -X main.GitBranch=",
+   "-o",
+   "/tmp/rec/bin/percona-server-mongodb-operator",
+   "cmd/manager/main.go"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/percona-server-mongodb-operator",
+    "/usr/local/bin/percona-server-mongodb-operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "psmdb/percona-server-mongodb-operator"
+ },
+ "settle": 120,
+ "slug": "k8spsmdb-434",
+ "rearm_script": "triggers/k8spsmdb-434.sh",
+ "rearm_args": [
+  "psmdb",
+  "mongodb-cluster"
+ ],
+ "rearm_settle": 90
+}

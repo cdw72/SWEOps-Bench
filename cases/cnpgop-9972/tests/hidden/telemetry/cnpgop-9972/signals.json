@@ -1,0 +1,50 @@
+{
+ "case": "cnpgop-9972",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "dup_pgdata_volume",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   },
+   "note": "Duplicate value: \"pgdata\" \u62d2 Job \u4e32;\u8ba1\u6570\u5f52\u96f6=\u4fee\u597d"
+  },
+  {
+   "kind": "cr_state",
+   "target": "clusters.postgresql.cnpg.io",
+   "field": "phase",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "Setting up primary",
+    "fixed": "Cluster in healthy state"
+   },
+   "note": "buggy \u5361\u5efa\u4e3b,fixed \u5065\u5eb7"
+  },
+  {
+   "kind": "pod_status",
+   "target": "c-1",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "/(\u65e0)",
+    "fixed": "1/1/Running"
+   },
+   "note": "primary pod buggy \u5efa\u4e0d\u51fa\u6765,fixed 1/1 Running"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "Duplicate value",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 2,
+    "fixed": 0
+   },
+   "note": "2026-09-10 \u8865:\u65e7\u62a5\u544a\u628a\u8fd9\u884c\u5f53\"\u566a\u97f3\"\u5254\u4e86,\u5b9e\u4e3a\u94c1\u8bc1 \u2014\u2014 Job \"c-1-initdb\" is invalid: \u2026 Duplicate value: \"pgdata\""
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

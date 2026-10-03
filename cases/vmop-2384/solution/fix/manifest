@@ -1,0 +1,2 @@
+internal/controller/operator/factory/vmagent/rbac.go
+internal/controller/operator/factory/vmsingle/rbac.go

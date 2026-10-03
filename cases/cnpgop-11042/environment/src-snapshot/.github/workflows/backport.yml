@@ -1,0 +1,252 @@
+name: Backport Pull Request
+on:
+  pull_request_target:
+    types:
+      - closed
+      - opened
+      - reopened
+    branches:
+      - main
+
+permissions: read-all
+
+jobs:
+  # Label the source pull request with 'backport-requested' and all supported releases label, the goal is, by default
+  # we backport everything, except those PR that are created or contain `do not backport` explicitly.
+  label-source-pr:
+    name: Add labels to PR
+    if: |
+        github.event.pull_request.merged == false &&
+        !contains(github.event.pull_request.labels.*.name, 'backport-requested') &&
+        !contains(github.event.pull_request.labels.*.name, 'do not backport')
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+    steps:
+      -
+        name: Label the pull request
+        uses: actions-ecosystem/action-add-labels@18f1af5e3544586314bbe15c0273249c770b2daf # v1
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'do not backport') }}
+        with:
+          github_token: ${{ secrets.REPO_GHA_PAT }}
+          number:  ${{ github.event.pull_request.number }}
+          labels: |
+            backport-requested :arrow_backward:
+            release-1.25
+            release-1.28
+            release-1.29
+      -
+        name: Create comment
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            :exclamation: By default, the pull request is configured to backport to all release branches.
+
+            - To stop backporting this pr, remove the label:  backport-requested :arrow_backward: or add the label 'do not backport'
+            - To stop backporting this pr to a certain release branch, remove the specific branch label: release-x.y
+
+          reactions: heart
+      -
+        name: Remove redundant labels
+        uses: actions-ecosystem/action-remove-labels@2ce5d41b4b6aa8503e285553f75ed56e0a40bae0 # v1
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'do not backport') }}
+        with:
+          github_token: ${{ secrets.REPO_GHA_PAT }}
+          labels: |
+            backport-requested :arrow_backward:
+            release-1.25
+            release-1.28
+            release-1.29
+
+  ## backport pull request in condition when pr contains 'backport-requested' label and contains target branches labels
+  back-porting-pr:
+    name: Backport to release branches
+    if: |
+        github.event.pull_request.merged == true &&
+        (
+          contains(github.event.pull_request.labels.*.name, 'backport-requested') ||
+          contains(github.event.pull_request.labels.*.name, 'backport-requested :arrow_backward:')
+        ) &&
+        !contains(github.event.pull_request.labels.*.name, 'do not backport')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [release-1.25, release-1.28, release-1.29]
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      BRANCH: ${{ matrix.branch }}
+    outputs:
+      commit: ${{ steps.check_commits.outputs.commit }}
+    steps:
+      -
+        name: Checkout code
+        if: contains( github.event.pull_request.labels.*.name, env.BRANCH )
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.BRANCH }}
+          token: ${{ secrets.REPO_GHA_PAT }}
+      -
+        name: Check commits and detect Go version
+        if: contains( github.event.pull_request.labels.*.name, env.BRANCH )
+        id: check_commits
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          commit=$(gh pr view ${PR} --json mergeCommit -q ".mergeCommit.oid" 2>/dev/null || :)
+          if [ -z "${commit}" ]
+          then
+            echo "No commit found!"
+            exit 0
+          fi
+
+          # get git user and email
+          author_name=$(git show -s --format='%an' "${commit}" | head -n1)
+          author_email=$(git show -s --format='%ae' "${commit}" | head -n1)
+
+          # Detect the Go version to install. If the picked commit changes the
+          # `go` or `toolchain` directive, use the picked value (so Go-version
+          # bumps cherry-pick cleanly); otherwise use the release branch's
+          # current value. Install whichever of the two is set (toolchain wins
+          # because it is always >= the go directive by Go's invariants).
+          parent_go=$(git show "${commit}^:go.mod" 2>/dev/null | sed -n 's/^go //p' | head -1)
+          picked_go=$(git show "${commit}:go.mod"  2>/dev/null | sed -n 's/^go //p' | head -1)
+          branch_go=$(sed -n 's/^go //p' go.mod | head -1)
+          parent_tc=$(git show "${commit}^:go.mod" 2>/dev/null | sed -n 's/^toolchain go//p' | head -1)
+          picked_tc=$(git show "${commit}:go.mod"  2>/dev/null | sed -n 's/^toolchain go//p' | head -1)
+          branch_tc=$(sed -n 's/^toolchain go//p' go.mod | head -1)
+          if [ -n "${picked_go}" ] && [ "${picked_go}" != "${parent_go}" ]; then
+            eff_go=${picked_go}
+          else
+            eff_go=${branch_go}
+          fi
+          if [ -n "${picked_tc}" ] && [ "${picked_tc}" != "${parent_tc}" ]; then
+            eff_tc=${picked_tc}
+          else
+            eff_tc=${branch_tc}
+          fi
+          go_version=${eff_tc:-$eff_go}
+
+          echo "commit=${commit}" >> $GITHUB_OUTPUT
+          echo "go_version=${go_version}" >> $GITHUB_OUTPUT
+          echo "cherry-pick commit ${commit} to branch ${BRANCH} with Go ${go_version}"
+
+          echo "AUTHOR_NAME=${author_name}" >> $GITHUB_ENV
+          echo "AUTHOR_EMAIL=${author_email}" >> $GITHUB_ENV
+      -
+        name: Install Go
+        if: |
+          contains( github.event.pull_request.labels.*.name, env.BRANCH ) && steps.check_commits.outputs.commit != ''
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ steps.check_commits.outputs.go_version }}
+          check-latest: true
+          cache: false
+      -
+        name: Cache Go modules
+        if: |
+          contains( github.event.pull_request.labels.*.name, env.BRANCH ) && steps.check_commits.outputs.commit != ''
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: backport-go-${{ runner.os }}-${{ matrix.branch }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            backport-go-${{ runner.os }}-${{ matrix.branch }}-
+            backport-go-${{ runner.os }}-
+      -
+        name: cherry pick and push
+        env:
+          COMMIT: ${{ steps.check_commits.outputs.commit }}
+        if: |
+          contains( github.event.pull_request.labels.*.name, env.BRANCH ) && env.COMMIT != ''
+        run: |
+          git config user.email "${AUTHOR_EMAIL}"
+          git config user.name "${AUTHOR_NAME}"
+
+          # Register a no-op merge driver and apply it to go.mod / go.sum so
+          # the cherry-pick never duplicates singleton directives or hashes:
+          # conflicting regions keep the release branch's version unchanged
+          # (the driver is `true`, which leaves the target file untouched).
+          # The picked commit's intent is then replayed semantically below
+          # via `go mod edit`, ignoring any line context that may have
+          # diverged. `--keep-redundant-commits` lets the cherry-pick create
+          # an empty commit when the driver discards every change in the
+          # picked commit (e.g. a pure go.mod bump on a divergent branch);
+          # the replay then re-adds the intended change and the Reconcile
+          # step amends it onto that commit.
+          git config merge.keep-ours.name "Keep ours (release branch) version"
+          git config merge.keep-ours.driver "true"
+          mkdir -p .git/info
+          cat > .git/info/attributes <<'EOF'
+          go.mod merge=keep-ours
+          go.sum merge=keep-ours
+          EOF
+
+          git cherry-pick -x --mainline 1 --empty=keep "${COMMIT}"
+
+          # Replay the picked commit's go.mod intent surgically (no-op when
+          # the picked commit doesn't touch go.mod).
+          hack/replay-gomod.sh "${COMMIT}"
+
+          # If the cherry-pick commit or the semantic replay above touched
+          # go.mod/go.sum, settle go.sum with `go mod tidy`, verify hashes,
+          # and fold the result into the cherry-pick commit so it lands as
+          # a single commit. The replay leaves go.mod modified in the
+          # working tree without staging it, so we also check that.
+          if git diff-tree --no-commit-id --name-only -r HEAD | grep -qE '^go\.(mod|sum)$' \
+             || ! git diff --quiet -- go.mod go.sum; then
+            go mod tidy
+            go mod verify
+            if ! git diff --quiet go.mod go.sum; then
+              git add go.mod go.sum
+              git commit --amend --no-edit
+            fi
+          fi
+
+          make fmt vet generate apidoc wordlist-ordered
+          if ! git diff --exit-code --quiet
+          then
+            echo "!!! Generated files need manually handling"
+            exit 1
+          fi
+          git push origin HEAD:"${BRANCH}"
+
+  create-tickets:
+    name: Create tickets for failures
+    needs:
+      - back-porting-pr
+    if: |
+      failure() && !cancelled() &&
+      needs.back-porting-pr.outputs.commit != ''
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      COMMIT: ${{ needs.back-porting-pr.outputs.commit }}
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - name: create ticket
+        uses: dacbd/create-issue-action@cdb57ab6ff8862aa09fee2be6ba77a59581921c2 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: Backport failure for pull request ${{ env.PR }}
+          labels: backport failure
+          body: |
+            ### Context
+            Automatically backport failure for pull request ${{ env.PR }}
+
+            Pull request: ${{ github.server_url }}/${{ github.repository }}/pull/${{ env.PR }}
+            Commit: ${{ github.server_url }}/${{ github.repository }}/commit/${{ env.COMMIT }}
+            Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            To solve the ticket, open the workflow link above, and for each failed release branch check the following:
+
+            1. Whether the commit should be `cherry-pick`(ed) to this release branch, otherwise skip this release branch
+            2. If yes, `cherry-pick` the commit manually and push it to the release branch. You may need to resolve the
+            conflicts and issue `cherry-pick --continue` again. Also, a dependent commit missing may be causing the
+            failure, so if that's the case you may need to `cherry-pick` the dependent commit first.

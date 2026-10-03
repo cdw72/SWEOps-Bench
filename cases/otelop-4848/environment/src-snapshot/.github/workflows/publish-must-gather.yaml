@@ -1,0 +1,93 @@
+name: "Publish must-gather image"
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+  workflow_dispatch:
+
+env:
+  PLATFORMS: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    permissions:
+      packages: write
+      attestations: write
+      id-token: write
+    name: Publish must-gather container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: "~1.25.7"
+
+      - name: Unshallow
+        run: git fetch --prune --unshallow
+
+      - name: Build the binary for each supported architecture
+        run: |
+          for platform in $(echo $PLATFORMS | tr "," "\n"); do
+            arch=${platform#*/}
+            echo "Building must-gather for $arch"
+            make must-gather ARCH=$arch
+          done
+
+      - name: Docker meta
+        id: docker_meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: |
+            ghcr.io/open-telemetry/opentelemetry-operator/must-gather
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{raw}}
+            type=ref,event=branch
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Cache Docker layers
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Log into Docker.io
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        if: ${{ github.event_name == 'push' }}
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to GitHub Package Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        if: ${{ github.event_name == 'push' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push must-gather image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: ./cmd/gather/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache

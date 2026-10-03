@@ -1,0 +1,6 @@
+namePrefix: ""
+
+bases:
+  - ../crd
+  - ../rbac
+  - ../manager

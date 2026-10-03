@@ -1,0 +1,36 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "knative-serving",
+    "get",
+    "deploy",
+    "knative-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/operator",
+   "./cmd/operator"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/operator",
+    "/ko-app/operator"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "knative-serving/knative-operator"
+ },
+ "settle": 120,
+ "slug": "knop-1137"
+}

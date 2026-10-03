@@ -1,0 +1,40 @@
+version: "2"
+run:
+  build-tags:
+    - e2e
+    - preupgrade
+    - postupgrade
+    - postdowngrade
+linters:
+  enable:
+    - asciicheck
+    - gosec
+    - prealloc
+    - unconvert
+    - unparam
+  disable:
+    - errcheck
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - gosec
+          - unparam
+        path: test
+    paths:
+      - pkg/client
+      - third_party
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

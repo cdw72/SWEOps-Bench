@@ -1,0 +1,59 @@
+{
+  "case_id": "rdoptwo-1540",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_v0-23-0.yaml",
+  "operator_ready": [
+    "-n redis-operator get deploy redis-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cr-1540.yaml",
+      "ns": "default",
+      "settle": 90,
+      "timeout": 300
+    }
+  ],
+  "settle_sec": 0,
+  "fault_verify": [
+    [
+      "-n default get rediscluster rc -o jsonpath={.status.state}",
+      "Initializing"
+    ],
+    [
+      "-n default get sts rc-leader -o jsonpath={.status.readyReplicas}",
+      ""
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "redis-operator"
+  ],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "default",
+      "settle": 60
+    }
+  ],
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/cr-1540.yaml"
+    ],
+    [
+      "-n",
+      "default",
+      "delete",
+      "sts",
+      "rc-leader",
+      "--wait=false"
+    ]
+  ],
+  "poll_fault_settle": 90,
+  "poll_why_fault": "2026-09-16 修:只 apply 不够 —— 旧 sts 在,persistenceEnabled true->false 落在volumeClaimTemplates(不可变字段)上,算子 UpdateRedisClusterSetup 被 apiserver 拒:`Forbidden: updates to statefulset spec for fields other than 'replicas','ordinals','template','updateStrategy','persistentVolumeClaimRetentionPolicy','minReadySeconds'`(运行时算子日志实锤)。旧 sts 一直是健康的 -> 永远没有 FailedCreate -> 探针永不翻面。删掉 leader sts 让算子**重建**,重建的 pod template 才会带上那个坏 initContainer volumeMount,apiserver 才在**建 pod** 时拒收(语料里的 FailedCreate 正是 pod 级)。与 rbop-2218 注释同一课:不删则旧 sts 一直在,故障根本不显形。"
+}

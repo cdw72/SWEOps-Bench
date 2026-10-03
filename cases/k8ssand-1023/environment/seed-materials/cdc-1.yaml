@@ -1,0 +1,53 @@
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: cassandra-datacenter
+spec:
+  clusterName: cluster1
+  serverType: cassandra
+  serverVersion: 3.11.7
+  managementApiAuth:
+    insecure: {}
+  size: 1
+  storageConfig:
+    cassandraDataVolumeClaimSpec:
+      storageClassName: server-storage
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 3Gi
+  # ── 沙箱保真(2026-09-20 加)──────────────────────────────────────────────
+  # 本 env 的宿主是 cgroup **v2**,而配置构建器镜像
+  # (datastax/cass-config-builder:1.0.3)带的是 Java 8 `1.8.0_252` —— 它只认
+  # cgroup **v1** 的 /sys/fs/cgroup/memory/memory.limit_in_bytes(本机不存在),
+  # 于是退回**按宿主物理内存**算堆:MemTotal 62.5GiB ⇒ 初始堆 1GiB、上限
+  # 15.6GiB,**与容器自己的限额无关**(实测 --memory 256m 与 --memory 1024m 打出
+  # 来的 MaxHeapSize 逐字节相同:16756244480)。
+  # 算子给的默认是 256Mi(construct_podtemplatespec.go:285 取
+  # DefaultsConfigInitContainer = 1000m/256Mi)⇒ 那 1GiB 初始堆一申请就被 OOM
+  # 杀(exitCode 137)。上游集群是 cgroup v1:同样的 256Mi 它读得到 ⇒ 上限 64Mi、
+  # 初始 4Mi,构建器正常跑完 —— 也就是说**这条 OOM 是本机形态造出来的,不是案子
+  # 的故障**。
+  # 危害不在"多一条症状",而在它**出现得晚**:缺 keystore 那条真故障(⇒
+  # FailedMount / pod 永 Pending)会让 pod 根本起不到 init 容器,而 agent 一旦把
+  # keystore 补上,构建器就开跑 ⇒ OOM ⇒ 反馈回合里冒出一个全新的失败,把 agent
+  # 引到 construct_podtemplatespec.go 的资源默认值上(实测 2026-09-20 17:01 那场:
+  # 修复做对了、六轴里只有 RCA 挂,根因文件写的是 construct_podtemplatespec.go)。
+  # 修法取本仓既有档位(cassop-315 的材料同款:limits 2Gi / requests 512Mi)——
+  # 限额大于那 1GiB 初始堆即可不再 OOM。**故障机制一个字不动**:缺 keystore
+  # 那条仍由 secrets.go 的分支缺陷产生,检测面的 FailedMount/Pending 时点也不变
+  # (那条真故障存在时构建器压根不会启动,本项只在它被修掉之后才起作用)。
+  configBuilderResources:
+    limits:
+      memory: 2Gi
+    requests:
+      memory: 512Mi
+  config:
+    cassandra-yaml:
+      authenticator: org.apache.cassandra.auth.PasswordAuthenticator
+      authorizer: org.apache.cassandra.auth.CassandraAuthorizer
+      role_manager: org.apache.cassandra.auth.CassandraRoleManager
+    jvm-options:
+      initial_heap_size: 800M
+      max_heap_size: 800M

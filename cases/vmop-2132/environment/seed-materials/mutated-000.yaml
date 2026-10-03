@@ -1,0 +1,46 @@
+# vmop-2132 fault input = the VMAlertmanagerConfig CR itself. Buggy operator
+# (v0.69.0 = srcbuggy-2132 pin 8e41c832) rawValue.set() renders alertmanager
+# config dropping every <=0 integer (item > 0 gate); a telegram chat_id is
+# naturally negative (-100...) -> the rendered telegram_config is left without
+# chat_id -> ValidateAlertmanagerConfigSpec errors 'missing chat_id or
+# chat_id_file on telegram_config' -> the VMAlertmanager reconciler errors
+# (Warning ReconciliationError) BEFORE creating the StatefulSet -> the
+# vmalertmanager-vmalertmanager StatefulSet is NEVER created. Fixed
+# (#2133, 95da4125) changes item>0 to item!=0 (keeps negatives) -> config
+# renders with chat_id intact -> VMAlertmanager StatefulSet generated.
+# Recipe mirrored from seed_vmop_2132 (seed_sieve_case.py) verbatim.
+# NOTE: the sts exists ONLY on the fixed side; the host bridge recovery gate
+# keys on {.metadata.name} of the StatefulSet vmalertmanager-vmalertmanager.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tg-token
+  namespace: default
+stringData:
+  token: "123456:ABC-DEF"
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanager
+metadata:
+  name: vmalertmanager
+  namespace: default
+spec:
+  replicaCount: 1
+  selectAllByDefault: true
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanagerConfig
+metadata:
+  name: vmac
+  namespace: default
+spec:
+  route:
+    receiver: telegram
+    group_by: ["alertname"]
+  receivers:
+  - name: telegram
+    telegram_configs:
+    - chat_id: -1001234567890
+      bot_token:
+        name: tg-token
+        key: token

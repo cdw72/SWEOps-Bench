@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: (join('-', ['cross', $namespace]))
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  labels:
+    dashboards: "grafana"
+spec:
+  config:
+    log:
+      mode: "console"
+    auth:
+      disable_login_form: "false"
+    security:
+      admin_user: root
+      admin_password: secret
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: grafana
+              securityContext:
+                allowPrivilegeEscalation: true
+                readOnlyRootFilesystem: false
+              readinessProbe:
+                failureThreshold: 3
+                periodSeconds: 2
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: example-grafanadatasource
+  namespace: (join('-', ['cross', $namespace]))
+spec:
+  allowCrossNamespaceImport: true
+  datasource:
+    access: proxy
+    database: prometheus
+    name: Prometheus
+    url: https://demo.promlabs.com
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaNotificationPolicy
+metadata:
+  name: test-isolated
+  namespace: (join('-', ['cross', $namespace]))
+spec:
+  allowCrossNamespaceImport: false
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  route:
+    receiver: grafana-default-email
+    group_by:
+      - grafana_folder
+      - alertname

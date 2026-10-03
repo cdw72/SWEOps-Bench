@@ -1,0 +1,60 @@
+{
+  "case_id": "mgoptwo-897",
+  "operator_ready_timeout": 900,
+  "ensure_ns": [
+    "mongodb"
+  ],
+  "k8s_version": "v1.23",
+  "operator_bundle": "bundle.yaml",
+  "operator_ready": [
+    "-n mongodb get deploy percona-server-mongodb-operator",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "mongodb",
+      "wait": [
+        [
+          "get sts",
+          "test-cluster-rs0"
+        ],
+        [
+          "get pods",
+          "Running"
+        ]
+      ],
+      "timeout": 900
+    },
+    {
+      "file": "mutated-001.yaml",
+      "ns": "mongodb",
+      "settle": 45
+    }
+  ],
+  "settle_sec": 60,
+  "image_rewrites": [
+    [
+      "perconalab/percona-server-mongodb-operator:srcfix-897",
+      "tylergu1998/percona-server-mongodb-operator:test"
+    ]
+  ],
+  "operator_ns": "default",
+  "apply_ns": "mongodb",
+  "ensure_sc": [
+    {
+      "name": "standard"
+    }
+  ],
+  "trigger_script": "mgoptwo-897.sh",
+  "poll_fault": [
+    [
+      "-n",
+      "mongodb",
+      "apply",
+      "-f",
+      "/seed-data/mutated-001.yaml"
+    ]
+  ],
+  "poll_healthy_steps": 1
+}

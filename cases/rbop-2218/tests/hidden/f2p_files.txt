@@ -1,0 +1,4 @@
+internal/controller/rabbitmqcluster_controller_test.go
+internal/resource/statefulset_test.go
+internal/webhook/v1beta1/rabbitmqcluster_webhook_test.go
+internal/resource/statefulset_selector_override_test.go

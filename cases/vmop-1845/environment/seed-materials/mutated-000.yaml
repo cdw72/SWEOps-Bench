@@ -1,0 +1,23 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vmcluster
+  namespace: default
+spec:
+  retentionPeriod: "30d"
+  vmstorage:
+    replicaCount: 1
+    persistentVolumeClaimRetentionPolicy:
+      whenDeleted: Delete
+      whenScaled: Retain
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+  vmselect:
+    replicaCount: 1
+  vminsert:
+    replicaCount: 1

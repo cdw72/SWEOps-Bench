@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: promop
+  namespace: default
+spec:
+  version: v3.6.0
+  replicas: 1
+  serviceAccountName: promop-sa
+  remoteWrite:
+  - url: https://rw.example.invalid/api/v1/write
+    azureAd:
+      workloadIdentity:
+        clientId: 11111111-2222-3333-4444-555555555555
+        tenantId: 11111111-2222-3333-4444-666666666666

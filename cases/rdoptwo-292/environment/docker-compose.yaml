@@ -1,0 +1,45 @@
+services:
+  k3s:
+    image: rancher/k3s:v1.28.10-k3s1
+    privileged: true
+    hostname: k3s
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - ctr-sock:/run/k3s/containerd
+      - k3s-kc:/seed-kc
+    environment:
+      - K3S_TOKEN=sweops-seed-token
+      - K3S_KUBECONFIG_OUTPUT=/seed-kc/kubeconfig
+    command:
+      - server
+      - --cluster-init
+      - --tls-san
+      - k3s
+      - --disable
+      - traefik,servicelb,metrics-server
+      - --kubelet-arg=image-gc-high-threshold=100
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/bin/sh", "-c", "python3 /opt/seed.py && sleep infinity"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/seed-done"]
+      interval: 5s
+      timeout: 3s
+      retries: 720
+    volumes:
+      - ctr-sock:/run/k3s/containerd:ro
+      - k3s-kc:/seed-kc:ro
+    environment:
+      - SWEOPS_SEED_PHASE=pre
+      - K3S_SERVER=https://k3s:6443
+    depends_on:
+      k3s:
+        condition: service_started
+
+volumes:
+  ctr-sock:
+  k3s-kc:

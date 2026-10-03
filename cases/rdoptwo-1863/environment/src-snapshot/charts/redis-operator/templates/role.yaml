@@ -1,0 +1,145 @@
+{{- if .Values.rbac.enabled }}
+{{- $scope := include "redis-operator.rbacScope" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+{{- if eq $scope "cluster" }}
+kind: ClusterRole
+{{- else }}
+kind: Role
+{{- end }}
+metadata:
+  name: {{ .Values.redisOperator.name }}
+{{- if eq $scope "namespace" }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+  labels:
+    app.kubernetes.io/name : {{ .Values.redisOperator.name }}
+    helm.sh/chart : {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/managed-by : {{ .Release.Service }}
+    app.kubernetes.io/instance : {{ .Release.Name }}
+    app.kubernetes.io/version : {{ .Chart.AppVersion }}
+    app.kubernetes.io/component: role
+    app.kubernetes.io/part-of : {{ .Release.Name }}
+{{- if eq $scope "cluster" }}
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+{{- end }}
+rules:
+- apiGroups:
+  - redis.redis.opstreelabs.in
+  resources:
+  - rediss
+  - redisclusters
+  - redisreplications
+  - redis
+  - rediscluster
+  - redissentinel
+  - redissentinels
+  - redisreplication
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+{{- if eq $scope "cluster" }}
+# nonResourceURLs and cluster-scoped resources (CRDs) are only valid on a ClusterRole.
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - get
+- apiGroups:
+  - "apiextensions.k8s.io"
+  resources:
+  - "customresourcedefinitions"
+  verbs:
+  - "get"
+  - "list"
+  - "watch"
+{{- end }}
+- apiGroups:
+  - redis.redis.opstreelabs.in
+  resources:
+  - redis/finalizers
+  - rediscluster/finalizers
+  - redisclusters/finalizers
+  - redissentinel/finalizers
+  - redissentinels/finalizers
+  - redisreplication/finalizers
+  - redisreplications/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - redis.redis.opstreelabs.in
+  resources:
+  - redis/status
+  - rediscluster/status
+  - redisclusters/status
+  - redissentinel/status
+  - redissentinels/status
+  - redisreplication/status
+  - redisreplications/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  - pods/exec
+  - pods
+  - services
+  - configmaps
+  - events
+  - persistentvolumeclaims
+{{- if eq $scope "cluster" }}
+  # namespaces is a cluster-scoped resource; only grant it on a ClusterRole.
+  - namespaces
+{{- end }}
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+    - "policy"
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+{{- end }}

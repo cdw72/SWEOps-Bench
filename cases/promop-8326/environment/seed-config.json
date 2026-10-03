@@ -1,0 +1,48 @@
+{
+  "case_id": "promop-8326",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_v0-88-0.yaml",
+  "operator_ready": [
+    "-n default get deploy prometheus-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "sa-8326.yaml",
+      "ns": "default",
+      "settle": 5
+    },
+    {
+      "file": "cr-8326.yaml",
+      "ns": "default",
+      "settle": 300
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n default logs prometheus-promop-0 --all-containers --tail=100",
+      "must provide an Azure Managed Identity"
+    ],
+    [
+      "-n default get pod prometheus-promop-0 -o jsonpath='{.status.containerStatuses[?(@.name==\"prometheus\")].state.waiting.reason}'",
+      "CrashLoopBackOff"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "default"
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/cr-8326.yaml"
+    ]
+  ],
+  "poll_fault_settle": 300
+}

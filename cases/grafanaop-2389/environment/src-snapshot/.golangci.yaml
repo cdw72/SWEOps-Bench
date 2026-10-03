@@ -1,0 +1,178 @@
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    - dogsled
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
+    - importas
+    - makezero
+    - misspell
+    - modernize
+    - nakedret
+    - nestif
+    - nilerr
+    - nolintlint
+    - prealloc
+    - revive
+    - testifylint
+    - thelper
+    - unparam
+    - usestdlibvars
+    - whitespace
+    - wsl_v5
+    - unconvert
+
+  settings:
+    dogsled:
+      max-blank-identifiers: 2
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    exhaustive:
+      default-signifies-exhaustive: false
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    gocritic:
+      enabled-checks:
+        - appendCombine
+        - builtinShadow
+        - builtinShadowDecl
+        - httpNoBody
+        - importShadow
+        - paramTypeCombine
+        - sloppyReassign
+        - typeUnparen
+        - unnecessaryBlock
+
+    gocyclo:
+      min-complexity: 25
+
+    importas:
+      no-unaliased: true
+
+      alias:
+        - pkg: github.com/bitly/go-simplejson
+          alias: simplejson
+        - pkg: github.com/grafana/grafana-openapi-client-go/client
+          alias: genapi
+        - pkg: github.com/grafana/grafana-operator/v5/controllers/client
+          alias: grafanaclient
+        - pkg: github.com/go-openapi/runtime/client
+          alias: httptransport
+        - pkg: github.com/openshift/api/route/v1
+          alias: routev1
+        - pkg: go.uber.org/zap
+          alias: uberzap
+        - pkg: k8s.io/api/(\w+)/(v[\w\d]+)
+          alias: $1$2
+        - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
+          alias: apiextensionsv1
+        - pkg: k8s.io/apimachinery/pkg/api/errors
+          alias: apierrors
+        - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+          alias: metav1
+        - pkg: sigs.k8s.io/controller-runtime
+          alias: ctrl
+        - pkg: sigs.k8s.io/controller-runtime/pkg/log
+          alias: logf
+        - pkg: sigs.k8s.io/controller-runtime/pkg/metrics/server
+          alias: metricsserver
+        - pkg: k8s.io/apimachinery/pkg/util/runtime
+          alias: utilruntime
+        - pkg: sigs.k8s.io/gateway-api/apis/v1
+          alias: gwapiv1
+
+    makezero:
+      always: false
+
+    misspell:
+      locale: US
+
+    modernize:
+      disable:
+        - omitzero
+
+    nakedret:
+      max-func-lines: 30
+
+    nestif:
+      min-complexity: 10
+
+    nolintlint:
+      allow-unused: false
+      allow-no-explanation: []
+      require-explanation: false
+      require-specific: false
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    revive:
+      severity: warning
+
+    staticcheck:
+      checks:
+        - all
+
+    thelper:
+      test:
+        first: true
+        name: true
+        begin: true
+      benchmark:
+        first: true
+        name: true
+        begin: true
+      tb:
+        first: true
+        name: true
+        begin: true
+
+    unparam:
+      check-exported: true
+
+    whitespace:
+      multi-if: false
+      multi-func: false
+
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+    rules:
+      - linters:
+          - funlen
+          - gocognit
+          - gocyclo
+          - unparam
+          - unused
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

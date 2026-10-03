@@ -1,0 +1,40 @@
+# This workflow runs daily to clean up the `*-testing` images older than the
+# cut-off period specified in `snok/container-retention-policy`
+name: clean-testing-package
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+env:
+  IMAGE_NAME: "cloudnative-pg-testing"
+  CONTAINER_IMAGE_NAMES: "pgbouncer-testing, postgresql-testing, postgis-testing"
+
+permissions: read-all
+
+jobs:
+  clean-ghcr:
+    name: delete old testing container images
+    permissions:
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete '-testing' operator images in ${{ env.IMAGE_NAME }}
+        uses: snok/container-retention-policy@3b0972b2276b171b212f8c4efbca59ebba26eceb # v3.0.1
+        with:
+          image-names: ${{ env.IMAGE_NAME }}
+          cut-off: 5d
+          keep-n-most-recent: 1
+          account: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete '-testing' operand images
+        uses: snok/container-retention-policy@3b0972b2276b171b212f8c4efbca59ebba26eceb # v3.0.1
+        if: ${{ github.repository_owner == 'cloudnative-pg' }}
+        with:
+          image-names: ${{ env.CONTAINER_IMAGE_NAMES }}
+          cut-off: 1w
+          keep-n-most-recent: 1
+          account: "cloudnative-pg"
+          token: ${{ secrets.REPO_GHA_PAT }}

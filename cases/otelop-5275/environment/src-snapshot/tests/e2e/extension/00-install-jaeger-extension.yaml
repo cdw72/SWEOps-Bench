@@ -1,0 +1,32 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: jaeger-inmemory
+spec:
+  image: mirror.gcr.io/jaegertracing/jaeger:latest
+  config:
+    service:
+      extensions: [jaeger_storage, jaeger_query]
+      pipelines:
+        traces:
+          receivers: [otlp]    
+          exporters: [jaeger_storage_exporter]
+    extensions:
+      jaeger_query:
+        storage:
+          traces: memstore
+        grpc:
+          endpoint: 0.0.0.0:16685
+      jaeger_storage:
+        backends:
+          memstore:
+            memory:
+              max_traces: 100000
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+          http:
+    exporters:
+      jaeger_storage_exporter:
+        trace_storage: memstore

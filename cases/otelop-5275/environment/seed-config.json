@@ -1,0 +1,41 @@
+{
+  "case_id": "otelop-5275",
+  "k8s_version": "v1.31",
+  "operator_bundle": "bundle-otelop-154.yaml",
+  "operator_ready": [
+    "-n opentelemetry-operator-system get pods -l app.kubernetes.io/name=opentelemetry-operator -o jsonpath={.items[0].status.phase}",
+    "Running"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [],
+  "settle_sec": 240,
+  "fault_verify": [
+    [
+      "-n opentelemetry-operator-system get pods -l app.kubernetes.io/name=opentelemetry-operator -o jsonpath={.items[0].status.containerStatuses[0].state.waiting.reason}",
+      "CrashLoopBackOff"
+    ],
+    [
+      "-n opentelemetry-operator-system logs deploy/opentelemetry-operator-controller-manager --tail=300",
+      "may not specify both ipBlock and"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "opentelemetry-operator-system"
+  ],
+  "pre_manifests": [
+    "cert-manager-v1.14.7.yaml",
+    "route-openshift-io-dummy.yaml"
+  ],
+  "pre_ready": [
+    [
+      "get deploy -n cert-manager cert-manager-webhook",
+      "1/1"
+    ]
+  ],
+  "poll_skip_pre": [
+    "route-openshift-io-dummy.yaml"
+  ],
+  "poll_fault_script": "poll-inject.sh",
+  "poll_fault_settle": 240
+}

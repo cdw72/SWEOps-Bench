@@ -1,0 +1,16 @@
+## This file is auto-generated, do not modify ##
+resources:
+- operator_v1beta1_vmagent.yaml
+- operator_v1beta1_vmalert.yaml
+- operator_v1beta1_vmalertmanager.yaml
+- operator_v1beta1_vmpodscrape.yaml
+- operator_v1beta1_vmrule.yaml
+- operator_v1beta1_vmservicescrape.yaml
+- operator_v1beta1_vmsingle.yaml
+- operator_v1beta1_vmcluster.yaml
+- operator_v1beta1_vmprobe.yaml
+- operator_v1beta1_vmnodescrape.yaml
+- operator_v1beta1_vmstaticscrape.yaml
+- operator_v1beta1_vmuser.yaml
+- operator_v1beta1_vmauth.yaml
+- operator_v1beta1_vmalertmanagerconfig.yaml

@@ -1,0 +1,45 @@
+{
+  "case_id": "xtop-1067",
+  "k8s_version": "v1.23",
+  "operator_bundle": "cw-bundle.yaml",
+  "operator_ready": [
+    "-n acto-namespace get deploy percona-xtradb-cluster-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "mutated-0.yaml",
+      "ns": "acto-namespace",
+      "wait": [
+        [
+          "get perconaxtradbclusters.pxc.percona.com test-cluster -o jsonpath={.status.state}",
+          "ready"
+        ]
+      ],
+      "timeout": 900
+    },
+    {
+      "file": "mutated-1.yaml",
+      "ns": "acto-namespace",
+      "settle": 120
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n acto-namespace get sts test-cluster-haproxy -o jsonpath={.spec.template.spec.nodeSelector.haproxy-role}",
+      "old"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "acto-namespace"
+  ],
+  "pre_manifests": [
+    "node-haproxy-role.yaml"
+  ],
+  "trigger_script": "xtop-1067.sh",
+  "apply_ns": "acto-namespace",
+  "poll_healthy_steps": 2
+}

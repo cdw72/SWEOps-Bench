@@ -1,0 +1,19 @@
+{
+ "case": "k8spsmdb-434",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "nil_panic_previous",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 3,
+    "fixed": 0
+   },
+   "note": "NPE \u5d29\u6e83\u53ea\u5728 --previous;\u8f85\u8bc1 restart operator b=1/f=0"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

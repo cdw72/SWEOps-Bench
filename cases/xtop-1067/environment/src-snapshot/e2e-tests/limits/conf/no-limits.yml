@@ -1,0 +1,45 @@
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: no-limits
+spec:
+  secretsName: my-cluster-secrets
+  sslSecretName: some-name-ssl
+  sslInternalSecretName: some-name-ssl-internal
+  pxc:
+    size: 3
+    image: -pxc
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: 500M
+        cpu: 300m
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 6Gi
+    affinity:
+      antiAffinityTopologyKey: none
+  proxysql:
+    enabled: true
+    size: 2
+    image: -proxysql
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: 500M
+        cpu: 300m
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 6Gi
+    affinity:
+      antiAffinityTopologyKey: none
+  pmm:
+    enabled: true
+    image: -pmm
+    imagePullPolicy: IfNotPresent
+    serverHost: monitoring-service
+    serverUser: pmm

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>grafana/grafana-renovate-config//presets/base"
+  ],
+  "ignoreDeps": [
+    "ghcr.io/grafana/grafana-operator",
+    "github.com/openshift/api"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "packageNameTemplate": "docker.io/grafana/grafana",
+      "managerFilePatterns": [
+        "/controllers\/config\/operator_constants.go/",
+        "/config\/manager\/manager.yaml/",
+        "/tests\/e2e\/example-test\/00-assert.yaml/"
+      ],
+      "datasourceTemplate": "docker",
+      "matchStrings": [
+        "\\s*GrafanaVersion\\s*=\\s*\"(?<currentValue>[\\w+\\.\\-]*)\"",
+        "\\s*value:\\s*\"?[^\\s]+?:(?<currentValue>[\\w+\\.\\-]*)\"?",
+        "\\s*version:\\s*\"?(?<currentValue>[\\w+\\.\\-]*)\"?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)Makefile$/",
+        "/\\.mk$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-zA-Z0-9-._]+?) depName=(?<depName>[^\\s]+?)(?: (?:packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?\\s+[A-Za-z0-9_]+?_VERSION\\s*:*\\??=\\s*[\"']?(?<currentValue>.+?)[\"']?\\s"
+      ]
+    }
+  ]
+}

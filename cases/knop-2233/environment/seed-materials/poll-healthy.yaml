@@ -1,0 +1,66 @@
+# poll 健康基线(补偿式)—— knop-2233
+#
+# 那一刀(原始案):算子不把自身的 KUBERNETES_MIN_VERSION 透传给被管工作负载,
+# 于是 operand 用 vendored 的 defaultMinimumVersion=v1.34.0 去检查
+# (vendor/knative.dev/pkg/version/version.go:36),集群是 v1.23
+# ⇒ 每个走 vendor/knative.dev/pkg/injection/sharedmain/main.go:462
+#   的 CheckMinimumVersion 的组件都 CrashLoopBackOff。
+#
+# 健康版:把这些工作负载的 KUBERNETES_MIN_VERSION 显式下发成集群真实版本。
+# 清单来源 = 算子自带的 release(CR 未钉 spec.version ⇒ 取最新 1.21.1):
+#   src-snapshot/cmd/operator/kodata/knative-serving/1.21.1/2-serving-core.yaml
+#   src-snapshot/cmd/operator/kodata/knative-serving/1.21.1/3-serving-hpa.yaml
+# 5 个 Deployment 各只有一个同名容器(replaceEnv 按 container 名匹配,
+# 见 pkg/reconciler/common/workload_override.go:172-179)。
+#
+# 注入 = 重放**不带 spec.deployments 的**原始 CR(seed 的 cr_sequence 走
+# 客户端 apply,last-applied 会把本块摘掉 ⇒ 算子把 env 撤下 ⇒ 重新 CrashLoop)。
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  # ★ 2026-09-24:关掉 istio ingress 插件(注入用的裸 CR 也加了同一块,两相位一致)。
+  #   不关的话,算子每个 reconcile 都在 install.go:70 返回
+  #   `please install istio or disable the istio ingress plugin: no matches for
+  #    kind "Gateway" in version "networking.istio.io/v1beta1"`,
+  #   而 5 个 operand 照样 Available ⇒ CR 常驻 Ready=False / InstallSucceeded=False、
+  #   健康闸(只核工作负载 READY)照样放行 ⇒ **诚实 agent 在 k=0 报这个真异常,
+  #   被判 false-alarm**(knop-2233 2026-09-23 实测:快照里 pre 相位 CR 就是 False)。
+  #   它与本案 GT(#2233 KUBERNETES_MIN_VERSION 不透传给 operand)毫无关系,是纯噪声:
+  #   关掉之后 pre 相位 CR 才能真正 Ready=True,post 相位 Ready=False 才是**真故障**。
+  ingress:
+    istio:
+      enabled: false
+  deployments:
+    - name: activator
+      env:
+        - container: activator
+          envVars:
+            - name: KUBERNETES_MIN_VERSION
+              value: "v1.23.0"
+    - name: autoscaler
+      env:
+        - container: autoscaler
+          envVars:
+            - name: KUBERNETES_MIN_VERSION
+              value: "v1.23.0"
+    - name: controller
+      env:
+        - container: controller
+          envVars:
+            - name: KUBERNETES_MIN_VERSION
+              value: "v1.23.0"
+    - name: webhook
+      env:
+        - container: webhook
+          envVars:
+            - name: KUBERNETES_MIN_VERSION
+              value: "v1.23.0"
+    - name: autoscaler-hpa
+      env:
+        - container: autoscaler-hpa
+          envVars:
+            - name: KUBERNETES_MIN_VERSION
+              value: "v1.23.0"

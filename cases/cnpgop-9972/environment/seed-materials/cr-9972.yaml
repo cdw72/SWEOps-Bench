@@ -1,0 +1,15 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: c
+  namespace: default
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.4
+  postgresql:
+    extensions:
+    - name: pgdata
+      image:
+        reference: quay.io/prometheus/busybox:latest
+  storage:
+    size: 1Gi

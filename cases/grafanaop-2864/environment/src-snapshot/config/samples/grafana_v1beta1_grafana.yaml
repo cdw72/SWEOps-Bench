@@ -1,0 +1,17 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana-a
+  labels:
+    dashboards: "grafana-a"
+    folders: "grafana-a"
+spec:
+  config:
+    security:
+      admin_user: root
+      admin_password: start
+    log:
+      mode: "console"
+    auth:
+      disable_login_form: "false"

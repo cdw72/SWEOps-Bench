@@ -1,0 +1,29 @@
+{
+ "case": "rdoptwo-1863",
+ "confirmed": [
+  {
+   "kind": "cr_state",
+   "target": "redisclusters.redis.redis.opstreelabs.in",
+   "field": "state",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "Bootstrap",
+    "fixed": "Ready"
+   }
+  },
+  {
+   "kind": "clog_sig",
+   "target": "peer did not return a certificate",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 39,
+    "fixed": 0
+   },
+   "note": "issue \u8bed\u4e49\u6b63\u4e2d(#1863:exec redis-cli \u65e0\u5ba2\u6237\u7aef\u8bc1\u4e66\u88ab tls-auth-clients=yes \u62d2\u7edd):leader-0 mongod/redis \u65e5\u5fd7 SSL \u62d2\u7edd\u4e32 buggy 39/fixed 0,\u540c\u578b\u6587\u4ef6\u65e0\u5c01\u9876,raw+\u7a97\u53e3\u53cc\u6838\u8fc7"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  generation: 1
+  name: some-name-tls-issue-ssl
+spec:
+  commonName: some-name-tls-issue-proxysql
+  dnsNames:
+    - some-name-tls-issue-pxc
+    - some-name-tls-issue-proxysql
+    - '*.some-name-tls-issue-pxc'
+    - '*.some-name-tls-issue-proxysql'
+    - test.com
+  issuerRef:
+    kind: Issuer
+    name: some-name-tls-issue-pxc-issuer
+  secretName: some-name-tls-issue-ssl

@@ -1,0 +1,13 @@
+# `standard` StorageClass: the dataset CRs pin
+# storageClassName: standard (carried from the original host kind
+# cluster); k3s only ships local-path, so pre-create it before any
+# CR apply (2026-09-18 poll evidence: PVC Pending ->
+# ProvisioningFailed storageclass "standard" not found ->
+# test-cluster-0 never scheduled -> probe reads '').
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer

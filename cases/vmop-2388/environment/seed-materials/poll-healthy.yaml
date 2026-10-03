@@ -1,0 +1,28 @@
+# vmop-2388 fault input = the VMAlert CR itself. Buggy operator (v0.73.1 =
+# srcbuggy-2384 pin b25cda5) buildNotifiersArgs ALWAYS errors "no notifiers
+# found" when the CR configures no notifier (even with NO alerting rules, where
+# a notifier is genuinely unnecessary) -> newDeploy fails -> CreateOrUpdate
+# returns BEFORE reconcile.Deployment -> the vmalert Deployment is NEVER created
+# and a Warning ReconciliationError event fires. Fixed (#2394, 4ec1e7a0) makes
+# the notifier optional when there are no alerting rules -> Deployment created.
+# Recipe mirrored from seed_vmop_2388 (seed_sieve_case.py) verbatim. NOTE: VMAlert
+# v0.73.1 has NO spec.replicas field (strict decoding would reject it) -- the
+# fixed-side Deployment is generated with replicas unset (k8s defaults to 1);
+# the host bridge gate keys on {.metadata.name} of the Deployment instead.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  name: vmalert
+  namespace: default
+spec:
+  notifier:
+    url: "http://vmalertmanager-vmalertmanager-2388.default.svc:9093"
+  image:
+    repository: victoriametrics/vmalert
+    tag: v1.111.0
+  datasource:
+    url: http://127.0.0.1:8428
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi

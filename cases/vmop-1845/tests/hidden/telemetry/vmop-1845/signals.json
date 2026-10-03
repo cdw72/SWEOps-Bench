@@ -1,0 +1,29 @@
+{
+ "case": "vmop-1845",
+ "confirmed": [
+  {
+   "kind": "event_msg",
+   "target": "ReconciliationError: failed create or update vmcluster: failed to expand size for",
+   "judge": "absent",
+   "values": {
+    "buggy": "failed create or update vmcluster: failed to expand size for",
+    "fixed": "(\u65e0)"
+   },
+   "note": "buggy \u5bf9 STS PVC \u76f2\u76ee\u6269\u5bb9\u62a5\u9519,fixed \u65e0"
+  },
+  {
+   "kind": "container_log",
+   "target": "operator[failed]",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 1,
+    "fixed": 0
+   },
+   "note": "operator failed \u8ba1\u6570 buggy 1,fixed 0"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "case": "rook-17372",
+ "confirmed": [
+  {
+   "kind": "cr_state",
+   "target": "cephclusters.ceph.rook.io",
+   "field": "ceph_details",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "MDS_INSUFFICIENT_STANDBY;MON_DISK_LOW;POOL_NO_REDUNDANCY",
+    "fixed": "MON_DISK_LOW;POOL_NO_REDUNDANCY"
+   },
+   "note": "ceph.details:buggy \u542b MDS_INSUFFICIENT_STANDBY(#17373 \u7f3a\u5e2d,standby wanted \u672a\u5f52 0);fixed \u65e0"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

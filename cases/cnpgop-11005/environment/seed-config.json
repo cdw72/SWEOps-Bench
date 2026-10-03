@@ -1,0 +1,66 @@
+{
+  "case_id": "cnpgop-11005",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle-cnpg.yaml",
+  "operator_ready": [
+    "-n cnpg-system get deploy cnpg-controller-manager",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "src.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get cluster src -o jsonpath={.status.phase}",
+          "Cluster in healthy state"
+        ],
+        [
+          "exec -n default src-1 -c postgres -- psql -U postgres -c 'CREATE TABLE big AS SELECT g AS id, repeat(chr(97 + g % 26), 200) AS pad FROM generate_series(1, 2000000) g'",
+          "SELECT 2000000"
+        ]
+      ],
+      "timeout": 900
+    },
+    {
+      "file": "repl.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get pods -l cnpg.io/jobRole=pgbasebackup --no-headers -o name",
+          "pod/"
+        ]
+      ],
+      "timeout": 300
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "-n default get cluster repl -o jsonpath='{.status.conditions[?(@.type==\"ConsistentSystemID\")].status}'",
+      "False"
+    ],
+    [
+      "-n default get pods -l cnpg.io/jobRole=pgbasebackup -o jsonpath='{.items[*].status.containerStatuses[*].state.terminated.reason}'",
+      "Error"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "cnpg-system"
+  ],
+  "trigger_script": "cnpgop-11005.sh",
+  "poll_healthy_steps": 1,
+  "poll_fault": [
+    [
+      "-n",
+      "default",
+      "apply",
+      "-f",
+      "/seed-data/repl.yaml"
+    ]
+  ],
+  "poll_fault_settle": 0
+}

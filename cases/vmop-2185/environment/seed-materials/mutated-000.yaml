@@ -1,0 +1,39 @@
+# vmop-2185 fault input = the VMAlertmanagerConfig CR itself. Buggy operator
+# (v0.69.0 = srcbuggy-2132 pin 8e41c832) buildRoute calls
+# buildCRPrefixedName(cr, cfgRoute.Receiver) even when a sub-route has NO
+# receiver (only matchers): the empty receiver name is prefixed to
+# '<ns>-<name>-' (trailing hyphen) -> the rendered route.receiver points at a
+# non-existent receiver -> ValidateAlertmanagerConfigSpec errors 'undefined
+# receiver "<ns>-<name>-" used in route' -> the VMAlertmanager reconciler
+# errors (Warning ReconciliationError) BEFORE creating the StatefulSet -> sts
+# vmalertmanager-vmalertmanager is NEVER created. Fixed (#2191, 88e8d1fe)
+# makes buildCRPrefixedName return early on an empty name -> no prefixed
+# phantom receiver -> VMAlertmanager StatefulSet generated.
+# Recipe mirrored from seed_vmop_2185 (seed_sieve_case.py) verbatim.
+# NOTE: the sts exists ONLY on the fixed side; the host bridge recovery gate
+# keys on {.metadata.name} of the StatefulSet vmalertmanager-vmalertmanager.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanager
+metadata:
+  name: vmalertmanager
+  namespace: default
+spec:
+  replicaCount: 1
+  selectAllByDefault: true
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanagerConfig
+metadata:
+  name: vmac
+  namespace: default
+spec:
+  route:
+    receiver: default
+    group_by: ["alertname"]
+    routes:
+    - matchers: ['alertname = "Test"']
+      group_by: ["alertname"]
+  receivers:
+  - name: default
+    webhook_configs:
+    - url: "http://localhost:5000/hook"

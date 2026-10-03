@@ -1,0 +1,26 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaNotificationPolicy
+metadata:
+  name: grafananotificationpolicy-sample
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  route:
+    receiver: Grafana Cloud OnCall
+    group_by:
+      - grafana_folder
+      - alertname
+    routes:
+      # NOTE: starting from Grafana 12.4.0, "empty" receiver is pre-provisioned instead of grafana-default-email
+      - receiver: empty
+        object_matchers:
+          - - foo
+            - =
+            - bar
+        routes:
+          - receiver: Grafana Cloud OnCall
+            object_matchers:
+              - - severity
+                - =
+                - critical

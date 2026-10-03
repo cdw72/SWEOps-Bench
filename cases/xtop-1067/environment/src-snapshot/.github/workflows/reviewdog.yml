@@ -1,0 +1,98 @@
+name: reviewdog
+on: [pull_request]
+jobs:
+  golangci-lint:
+    name: runner / suggester / golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          only-new-issues: true
+          args: --timeout 5m
+
+
+  gofmt:
+    name: runner / suggester / gofmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: gofmt -w -s $(find . -not -path "*/vendor/*" -name "*.go")
+      - uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: gofmt
+
+  shfmt:
+    name: runner / suggester / shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - run: go install mvdan.cc/sh/v3/cmd/shfmt@latest
+      - run: $(go env GOPATH)/bin/shfmt -f . | grep -v 'vendor' | xargs $(go env GOPATH)/bin/shfmt -bn -ci -s -w
+      - name: suggester / shfmt
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: shfmt
+
+  shellcheck:
+    if: github.event_name == 'pull_request'
+    name: runner / shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-shellcheck@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          shellcheck_flags: -e SC2155
+          exclude: "./vendor/*"
+
+  misspell:
+    name: runner / misspell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-misspell@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          locale: "US"
+          reporter: github-pr-check
+          exclude: "./vendor/*"
+
+  alex:
+    name: runner / alex
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-alex@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-review
+          level: info
+
+  manifests:
+    name: runner / manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: check on release branch
+        if: ${{ contains(github.head_ref, 'release-') || contains(github.base_ref, 'release-') }}
+        run: |
+          make generate manifests VERSION="$(grep "Version" version/version.go|grep -oE "[0-9]+\.[0-9]+\.[0-9]+")" IMAGE_TAG_BASE="percona/percona-xtradb-cluster-operator"
+          git diff --exit-code
+      - name: check on non release branches
+        if: ${{ ! (contains(github.head_ref, 'release-') || contains(github.base_ref, 'release-')) }}
+        run: |
+          make generate manifests VERSION=main
+          git diff --exit-code

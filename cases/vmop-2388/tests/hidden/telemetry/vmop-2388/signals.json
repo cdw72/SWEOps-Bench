@@ -1,0 +1,18 @@
+{
+ "case": "vmop-2388",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "no_notifiers",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 7,
+    "fixed": 0
+   }
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

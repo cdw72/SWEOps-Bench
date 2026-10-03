@@ -1,0 +1,414 @@
+package e2e
+
+import (
+	"context"
+	"fmt"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
+
+	vmv1beta1 "github.com/VictoriaMetrics/operator/api/operator/v1beta1"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/build"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/finalize"
+)
+
+var (
+	alertmanagerTestConf = `
+global:
+  resolve_timeout: 5m
+route:
+  group_by: ['job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  receiver: blackhole
+  routes:
+  - receiver: blackhole
+    matchers:
+    - '{"env.version.!"="v1.0.0",instance="main"}'
+receivers:
+- name: blackhole
+`
+)
+
+//nolint:dupl
+var _ = Describe("test vmalertmanager Controller", Label("vm", "alertmanager"), func() {
+
+	Context("e2e vmalertmanager", func() {
+		ctx := context.Background()
+		namespace := fmt.Sprintf("default-%d", GinkgoParallelProcess())
+		nsn := types.NamespacedName{
+			Namespace: namespace,
+		}
+
+		// delete test results
+		AfterEach(func() {
+			Expect(finalize.SafeDelete(ctx, k8sClient, &vmv1beta1.VMAlertmanager{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      nsn.Name,
+					Namespace: nsn.Namespace,
+				},
+			})).ToNot(HaveOccurred())
+			waitResourceDeleted(ctx, nsn, &vmv1beta1.VMAlertmanagerList{})
+		})
+		DescribeTable("should create alertmanager",
+			func(name string, cr *vmv1beta1.VMAlertmanager, verify func(*vmv1beta1.VMAlertmanager)) {
+				nsn.Name = name
+				cr.Name = name
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+				var created vmv1beta1.VMAlertmanager
+				Expect(k8sClient.Get(ctx, nsn, &created)).ToNot(HaveOccurred())
+				verify(&created)
+			},
+			Entry("with 1 replica", "replica-1",
+				&vmv1beta1.VMAlertmanager{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+					},
+					Spec: vmv1beta1.VMAlertmanagerSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				},
+				func(cr *vmv1beta1.VMAlertmanager) {
+					Expect(expectPodCount(ctx, k8sClient, &appsv1.StatefulSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					}, 1)).ToNot(HaveOccurred())
+				},
+			),
+			Entry("with strict security", "strict-security",
+				&vmv1beta1.VMAlertmanager{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+					},
+					Spec: vmv1beta1.VMAlertmanagerSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							UseDefaultResources:                 ptr.To(false),
+							UseStrictSecurity:                   ptr.To(true),
+							ReplicaCount:                        ptr.To[int32](1),
+							DisableAutomountServiceAccountToken: true,
+						},
+					},
+				},
+				func(cr *vmv1beta1.VMAlertmanager) {
+					Expect(expectPodCount(ctx, k8sClient, &appsv1.StatefulSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					}, 1)).ToNot(HaveOccurred())
+					var sts appsv1.StatefulSet
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName()}, &sts)).ToNot(HaveOccurred())
+					ps := sts.Spec.Template.Spec
+					Expect(ps.SecurityContext).NotTo(BeNil())
+					Expect(ps.SecurityContext.RunAsNonRoot).NotTo(BeNil())
+					Expect(ps.Containers).To(HaveLen(2))
+					Expect(ps.InitContainers).To(HaveLen(1))
+					Expect(ps.Containers[0].SecurityContext).NotTo(BeNil())
+					Expect(ps.Containers[1].SecurityContext).NotTo(BeNil())
+					Expect(ps.InitContainers[0].SecurityContext).NotTo(BeNil())
+					Expect(ps.Containers[0].SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+					Expect(ps.Containers[1].SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+					Expect(ps.InitContainers[0].SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+
+					// assert k8s api access
+					saTokenMount := "/var/run/secrets/kubernetes.io/serviceaccount"
+					alertmanagerPod := mustGetFirstPod(ctx, k8sClient, &appsv1.StatefulSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					})
+					Expect(hasVolumeMount(alertmanagerPod.Spec.Containers[0].VolumeMounts, saTokenMount)).To(HaveOccurred())
+					Expect(hasVolume(sts.Spec.Template.Spec.Volumes, "kube-api-access")).ToNot(HaveOccurred())
+					Expect(hasVolumeMount(ps.Containers[1].VolumeMounts, saTokenMount)).ToNot(HaveOccurred())
+					Expect(hasVolumeMount(ps.InitContainers[0].VolumeMounts, saTokenMount)).ToNot(HaveOccurred())
+
+				},
+			),
+		)
+
+		existAlertmanager := &vmv1beta1.VMAlertmanager{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: nsn.Namespace,
+			},
+			Spec: vmv1beta1.VMAlertmanagerSpec{
+				CommonAppsParams: vmv1beta1.CommonAppsParams{
+					ReplicaCount: ptr.To[int32](1),
+				},
+			},
+		}
+		DescribeTable("should update exist alertmanager",
+			func(name string, modify func(*vmv1beta1.VMAlertmanager), verify func(*vmv1beta1.VMAlertmanager)) {
+				// create and wait ready
+				existAlertmanager := existAlertmanager.DeepCopy()
+				existAlertmanager.Name = name
+				nsn.Name = name
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, existAlertmanager)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+				// update and wait ready
+				var toUpdate vmv1beta1.VMAlertmanager
+				Expect(k8sClient.Get(ctx, nsn, &toUpdate)).ToNot(HaveOccurred())
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					modify(&toUpdate)
+					Expect(k8sClient.Update(ctx, &toUpdate)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusExpanding, vmv1beta1.UpdateStatusOperational)
+				// verify
+				var updated vmv1beta1.VMAlertmanager
+				Expect(k8sClient.Get(ctx, nsn, &updated)).ToNot(HaveOccurred())
+				verify(&updated)
+			},
+			Entry("by changing replicas to 2", "update-replica-2",
+				func(cr *vmv1beta1.VMAlertmanager) {
+					cr.Spec.ReplicaCount = ptr.To[int32](2)
+				},
+				func(cr *vmv1beta1.VMAlertmanager) {
+					Expect(expectPodCount(ctx, k8sClient, &appsv1.StatefulSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					}, 2)).ToNot(HaveOccurred())
+				},
+			),
+			Entry("by changing default config", "change-config",
+				func(cr *vmv1beta1.VMAlertmanager) {
+					cr.Spec.ReplicaCount = ptr.To[int32](1)
+					cr.Spec.ConfigSecret = "non-default-am-config"
+					// create secret with config
+					dstSecret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      cr.Spec.ConfigSecret,
+							Namespace: namespace,
+						},
+						Data: map[string][]byte{
+							"alertmanager.yaml": []byte(alertmanagerTestConf),
+						},
+					}
+					Expect(k8sClient.Create(ctx, &dstSecret)).ToNot(HaveOccurred())
+					DeferCleanup(func(ctx SpecContext) {
+						Expect(finalize.SafeDelete(ctx, k8sClient, &corev1.Secret{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      cr.Spec.ConfigSecret,
+								Namespace: namespace,
+							}})).ToNot(HaveOccurred())
+					})
+				},
+				func(cr *vmv1beta1.VMAlertmanager) {
+					var amCfg corev1.Secret
+					dataGz, err := build.GzipConfig([]byte(alertmanagerTestConf))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(k8sClient.Get(ctx,
+						types.NamespacedName{Name: cr.ConfigSecretName(), Namespace: namespace}, &amCfg)).ToNot(HaveOccurred())
+					Expect(amCfg.Data["alertmanager.yaml.gz"]).To(Equal(dataGz))
+				},
+			),
+
+			Entry("by switching to empty resources", "switch-empty-resources",
+				func(cr *vmv1beta1.VMAlertmanager) {
+					cr.Spec.ReplicaCount = ptr.To[int32](1)
+					cr.Spec.UseDefaultResources = ptr.To(false)
+				},
+				func(cr *vmv1beta1.VMAlertmanager) {
+					Expect(expectPodCount(ctx, k8sClient, &appsv1.StatefulSet{
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: namespace,
+							Labels:    cr.SelectorLabels(),
+						},
+					}, 1)).ToNot(HaveOccurred())
+					var updatedSts appsv1.StatefulSet
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: namespace,
+						Name:      cr.PrefixedName(),
+					}, &updatedSts)).ToNot(HaveOccurred())
+					Expect(updatedSts.Spec.Template.Spec.Containers).To(HaveLen(2))
+					Expect(updatedSts.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
+					Expect(updatedSts.Spec.Template.Spec.Containers[1].Resources).To(Equal(corev1.ResourceRequirements{}))
+				},
+			),
+		)
+
+		It("should skip reconciliation when VMAlertmanager is paused", func() {
+			nsn.Name = "vmalertmanager-paused"
+			By("creating a VMAlertmanager")
+			initialReplicas := int32(1)
+			cr := &vmv1beta1.VMAlertmanager{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      nsn.Name,
+				},
+				Spec: vmv1beta1.VMAlertmanagerSpec{
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						ReplicaCount: &initialReplicas,
+					},
+				},
+			}
+			expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+				Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+			}, vmv1beta1.UpdateStatusOperational)
+
+			By("pausing the VMAlertmanager")
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+					return err
+				}
+				cr.Spec.Paused = true
+				return k8sClient.Update(ctx, cr)
+			}, eventualStatefulsetAppReadyTimeout).ShouldNot(HaveOccurred())
+
+			By("attempting to scale the VMAlertmanager while paused")
+			updatedReplicas := int32(2)
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+					return err
+				}
+				cr.Spec.ReplicaCount = &updatedReplicas
+				return k8sClient.Update(ctx, cr)
+			}, eventualStatefulsetAppReadyTimeout).ShouldNot(HaveOccurred())
+
+			Consistently(func() int32 {
+				var sts appsv1.StatefulSet
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(), Namespace: namespace}, &sts)).ToNot(HaveOccurred())
+				return *sts.Spec.Replicas
+			}, "10s", "1s").Should(Equal(initialReplicas))
+
+			By("unpausing the VMAlertmanager")
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+					return err
+				}
+				cr.Spec.Paused = false
+				return k8sClient.Update(ctx, cr)
+			}, eventualStatefulsetAppReadyTimeout).ShouldNot(HaveOccurred())
+
+			Eventually(func() int32 {
+				var sts appsv1.StatefulSet
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(), Namespace: namespace}, &sts)).ToNot(HaveOccurred())
+				return *sts.Spec.Replicas
+			}, eventualStatefulsetAppReadyTimeout).Should(Equal(updatedReplicas))
+		})
+
+		Context("status transitions", func() {
+			BeforeEach(func() {
+				ctx = context.Background()
+			})
+			It("should reach operational after creation", func() {
+				nsn.Name = "vmalertmanager-status-created"
+				cr := &vmv1beta1.VMAlertmanager{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAlertmanagerSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+			})
+
+			It("should transition operational→expanding→operational on spec update", func() {
+				nsn.Name = "vmalertmanager-status-update"
+				cr := &vmv1beta1.VMAlertmanager{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAlertmanagerSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				By("updating the spec to trigger reconcile")
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.LogLevel = "debug"
+						return k8sClient.Update(ctx, cr)
+					}, eventualDeploymentAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusExpanding, vmv1beta1.UpdateStatusOperational)
+			})
+
+			It("should transition operational→paused when paused", func() {
+				nsn.Name = "vmalertmanager-status-pause"
+				cr := &vmv1beta1.VMAlertmanager{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAlertmanagerSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				By("pausing the VMAlertmanager")
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualExpandingTimeout, func() {
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Paused = true
+						return k8sClient.Update(ctx, cr)
+					}, eventualStatefulsetAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusPaused)
+			})
+
+			It("should transition paused→operational when unpaused", func() {
+				nsn.Name = "vmalertmanager-status-unpause"
+				cr := &vmv1beta1.VMAlertmanager{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1beta1.VMAlertmanagerSpec{
+						CommonAppsParams: vmv1beta1.CommonAppsParams{
+							ReplicaCount: ptr.To[int32](1),
+							Paused:       true,
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualExpandingTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusPaused)
+
+				By("unpausing the VMAlertmanager")
+				expectStatusAfterAction(ctx, &vmv1beta1.VMAlertmanagerList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Paused = false
+						return k8sClient.Update(ctx, cr)
+					}, eventualStatefulsetAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+			})
+		})
+	})
+})

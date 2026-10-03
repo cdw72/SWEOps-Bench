@@ -1,0 +1,18 @@
+{
+ "case": "sparkop-2832",
+ "confirmed": [
+  {
+   "kind": "operator_log",
+   "target": "panic_lines",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 168,
+    "fixed": 0
+   }
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,32 @@
+{
+  "case_id": "grafanaop-2864",
+  "k8s_version": "v1.28",
+  "operator_bundle": "grafanaop-v5.24.0.yaml",
+  "operator_ready": [
+    "-n grafana get deploy grafana-operator-controller-manager -o jsonpath={.status.availableReplicas}",
+    "1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "grafana.yaml",
+      "ns": "grafana",
+      "wait": [
+        [
+          "get deploy grafana-deployment -o jsonpath={.status.readyReplicas}",
+          "1"
+        ]
+      ],
+      "timeout": 900
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "grafana",
+    "grafana"
+  ],
+  "trigger_script": "grafanaop-2864.sh",
+  "poll_healthy_steps": 1
+}

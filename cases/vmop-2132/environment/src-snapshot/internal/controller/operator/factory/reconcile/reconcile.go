@@ -1,0 +1,260 @@
+package reconcile
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"k8s.io/apimachinery/pkg/api/equality"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	vmv1beta1 "github.com/VictoriaMetrics/operator/api/operator/v1beta1"
+	"github.com/VictoriaMetrics/operator/internal/config"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/finalize"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/limiter"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/logger"
+)
+
+var (
+	pvcWaitReadyInterval = 1 * time.Second
+	pvcWaitReadyTimeout  = 5 * time.Second
+
+	podWaitReadyInterval = 1 * time.Second
+	podWaitReadyTimeout  = 5 * time.Second
+
+	appWaitReadyTimeout = 5 * time.Second
+	vmWaitReadyInterval = 5 * time.Second
+	vmWaitLogInterval   = 60 * time.Second
+)
+
+// Init sets package defaults
+func Init(cfg *config.BaseOperatorConf, statusUpdate time.Duration) {
+	podWaitReadyInterval = cfg.PodWaitReadyInterval
+	podWaitReadyTimeout = cfg.PodWaitReadyTimeout
+
+	pvcWaitReadyInterval = cfg.PVCWaitReadyInterval
+	pvcWaitReadyTimeout = cfg.PVCWaitReadyTimeout
+
+	appWaitReadyTimeout = cfg.AppWaitReadyTimeout
+	vmWaitReadyInterval = cfg.VMWaitReadyInterval
+	statusUpdateTTL = statusUpdate
+}
+
+func mergeMaps(existingMap, newMap, prevMap map[string]string) map[string]string {
+	strategy := vmv1beta1.MetadataStrategyMergePromPriority
+	return mergeMapsWithStrategy(existingMap, newMap, prevMap, strategy)
+}
+
+// mergeMapsWithStrategy performs maps merge depending on a given strategy:
+// * prefer-vm: returns existing map
+// * prefer-prom: returns new map
+// * merge-vm-priority: performs 3-way merge by merging keys that absent in prev map from new map into existing map
+// * merge-prom-priority: performs 3-way merge by merging keys that absent in prev map from existing map into new map
+func mergeMapsWithStrategy(existingMap, newMap, prevMap map[string]string, strategy vmv1beta1.MetadataStrategy) map[string]string {
+	switch strategy {
+	case vmv1beta1.MetadataStrategyPreferVM:
+		return existingMap
+	case vmv1beta1.MetadataStrategyPreferProm:
+		return newMap
+	case vmv1beta1.MetadataStrategyMergeVMPriority:
+		existingMap, newMap = newMap, existingMap
+	case vmv1beta1.MetadataStrategyMergePromPriority:
+	}
+	var dst map[string]string
+	var deleted sets.Set[string]
+
+	for k := range prevMap {
+		if _, ok := newMap[k]; !ok {
+			if deleted == nil {
+				deleted = sets.New[string]()
+			}
+			deleted.Insert(k)
+		}
+	}
+
+	for k, v := range existingMap {
+		if deleted.Has(k) {
+			continue
+		}
+		if dst == nil {
+			dst = make(map[string]string)
+		}
+		dst[k] = v
+	}
+	for k, v := range newMap {
+		if dst == nil {
+			dst = make(map[string]string)
+		}
+		dst[k] = v
+	}
+	return dst
+}
+
+func mergeMetaWithConversion(existingObj, newObj client.Object, prevMeta *metav1.ObjectMeta, owner *metav1.OwnerReference, shouldRemoveFinalizer bool, isConversion bool) (bool, error) {
+	strategy := vmv1beta1.MetadataStrategyMergePromPriority
+	if isConversion {
+		existingAnnotations := existingObj.GetAnnotations()
+		switch vmv1beta1.MetadataStrategy(existingAnnotations[vmv1beta1.MetadataStrategyLabel]) {
+		case vmv1beta1.MetadataStrategyPreferVM:
+			strategy = vmv1beta1.MetadataStrategyPreferVM
+		case vmv1beta1.MetadataStrategyMergePromPriority:
+			strategy = vmv1beta1.MetadataStrategyMergePromPriority
+		case vmv1beta1.MetadataStrategyMergeVMPriority:
+			strategy = vmv1beta1.MetadataStrategyMergeVMPriority
+		default:
+			strategy = vmv1beta1.MetadataStrategyPreferProm
+		}
+	}
+	return mergeMetaInternal(existingObj, newObj, prevMeta, owner, shouldRemoveFinalizer, strategy)
+}
+
+func mergeMeta(existingObj, newObj client.Object, prevMeta *metav1.ObjectMeta, owner *metav1.OwnerReference, shouldRemoveFinalizer bool) (bool, error) {
+	strategy := vmv1beta1.MetadataStrategyMergePromPriority
+	return mergeMetaInternal(existingObj, newObj, prevMeta, owner, shouldRemoveFinalizer, strategy)
+}
+
+func mergeMetaInternal(existingObj, newObj client.Object, prevMeta *metav1.ObjectMeta, owner *metav1.OwnerReference, shouldRemoveFinalizer bool, strategy vmv1beta1.MetadataStrategy) (bool, error) {
+	refChanged, err := addOwnerReferenceIfAbsent(existingObj, owner)
+	if err != nil {
+		return false, err
+	}
+	existingLabels := existingObj.GetLabels()
+	existingAnnotations := existingObj.GetAnnotations()
+	var prevLabels, prevAnnotations map[string]string
+	if prevMeta != nil {
+		prevLabels = prevMeta.Labels
+		prevAnnotations = prevMeta.Annotations
+	}
+	var finChanged bool
+	if shouldRemoveFinalizer {
+		finChanged = controllerutil.RemoveFinalizer(existingObj, vmv1beta1.FinalizerName)
+	}
+	newLabels := mergeMapsWithStrategy(existingLabels, newObj.GetLabels(), prevLabels, strategy)
+	newAnnotations := mergeMapsWithStrategy(existingAnnotations, newObj.GetAnnotations(), prevAnnotations, strategy)
+	changed := refChanged || finChanged || !equality.Semantic.DeepEqual(existingLabels, newLabels) ||
+		!equality.Semantic.DeepEqual(existingAnnotations, newAnnotations)
+	existingObj.SetLabels(newLabels)
+	existingObj.SetAnnotations(newAnnotations)
+	return changed, nil
+}
+
+func isRecreate(err error) bool {
+	var e *errRecreate
+	return errors.As(err, &e)
+}
+
+type errRecreate struct {
+	msg string
+}
+
+func newErrRecreate(ctx context.Context, r client.Object) *errRecreate {
+	finalizers := strings.Join(r.GetFinalizers(), ",")
+	if len(finalizers) > 0 {
+		finalizers = fmt.Sprintf("(finalizers=[%s])", finalizers)
+	}
+	msg := fmt.Sprintf("waiting for %s=%s/%s to be removed %s", r.GetObjectKind().GroupVersionKind().Kind, r.GetNamespace(), r.GetName(), finalizers)
+	logger.WithContext(ctx).Info(msg)
+	return &errRecreate{
+		msg: msg,
+	}
+}
+
+// Error implements errors.Error interface
+func (e *errRecreate) Error() string {
+	return e.msg
+}
+
+// IsRetryable determines one of errors:
+// * error which indicates that timeout for app transition into Ready state reached and should be continued at the next reconcile loop
+// * k8s conflict error
+// * reconciled resource is being deleted
+func IsRetryable(err error) bool {
+	return isConflict(err) || wait.Interrupted(err)
+}
+
+func isConflict(err error) bool {
+	return k8serrors.IsAlreadyExists(err) || k8serrors.IsConflict(err) || isRecreate(err)
+}
+
+func retryOnConflict(fn func() error) error {
+	return retry.OnError(retry.DefaultRetry, isConflict, fn)
+}
+
+// waitForStatus waits till obj reaches defined status
+func waitForStatus[T client.Object, ST StatusWithMetadata[STC], STC any](
+	ctx context.Context,
+	rclient client.Client,
+	obj ObjectWithDeepCopyAndStatus[T, ST, STC],
+	interval time.Duration,
+	status vmv1beta1.UpdateStatus,
+	minGeneration int64,
+) error {
+	lastStatus := obj.GetStatusMetadata()
+	nsn := types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}
+	limiter := limiter.NewRateLimiter(1, vmWaitLogInterval)
+	err := wait.PollUntilContextCancel(ctx, interval, true, func(ctx context.Context) (done bool, err error) {
+		if err = rclient.Get(ctx, nsn, obj); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			err = fmt.Errorf("unexpected error during attempt to get %T=%s: %w", obj, nsn.String(), err)
+			return
+		}
+		lastStatus = obj.GetStatusMetadata()
+		if lastStatus != nil && !limiter.Throttle() {
+			logger.WithContext(ctx).V(1).Info(fmt.Sprintf("waiting for %T=%s to be ready, current status: %s", obj, nsn.String(), string(lastStatus.UpdateStatus)))
+		}
+		return lastStatus != nil && minGeneration <= lastStatus.ObservedGeneration && lastStatus.UpdateStatus == status, nil
+	})
+	if err != nil {
+		updateStatus := "unknown"
+		if lastStatus != nil {
+			updateStatus = string(lastStatus.UpdateStatus)
+		}
+		return fmt.Errorf("failed to wait for %T=%s to be ready: %w, current status: %s", obj, nsn.String(), err, updateStatus)
+	}
+	return nil
+}
+
+func addOwnerReferenceIfAbsent(obj client.Object, owner *metav1.OwnerReference) (bool, error) {
+	if owner == nil {
+		return false, nil
+	}
+	owners := obj.GetOwnerReferences()
+	for _, o := range owners {
+		if o.APIVersion == owner.APIVersion && o.Kind == owner.Kind {
+			if o.Name == owner.Name {
+				return false, nil
+			} else {
+				msg := fmt.Sprintf("object %T=%s/%s has another owner reference of same kind", obj, obj.GetNamespace(), obj.GetName())
+				return false, fmt.Errorf("%s: %s/%s=%s", msg, o.APIVersion, o.Kind, o.Name)
+			}
+		}
+	}
+	owners = append(owners, *owner)
+	obj.SetOwnerReferences(owners)
+	return true, nil
+}
+
+// collectGarbage checks if resource must be freed from finalizer and prepares it for garbage collection by kubernetes
+func collectGarbage(ctx context.Context, rclient client.Client, obj client.Object, removeFinalizer bool) error {
+	if obj.GetDeletionTimestamp().IsZero() {
+		// fast path
+		return nil
+	}
+	if removeFinalizer {
+		if err := finalize.RemoveFinalizer(ctx, rclient, obj); err != nil {
+			return fmt.Errorf("cannot remove finalizer from %s=%s/%s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName(), err)
+		}
+	}
+	return newErrRecreate(ctx, obj)
+}

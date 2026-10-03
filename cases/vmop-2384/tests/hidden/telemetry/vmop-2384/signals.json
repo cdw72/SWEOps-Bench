@@ -1,0 +1,29 @@
+{
+ "case": "vmop-2384",
+ "confirmed": [
+  {
+   "kind": "container_log",
+   "target": "vmsingle-vmsingle[failed]",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 6,
+    "fixed": 0
+   },
+   "note": "cannot list secrets ... forbidden \u53ea\u5728 buggy(failed \u884c 6/0)"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "failed to list *v1.Secret",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 6,
+    "fixed": 0
+   },
+   "note": "2026-09-10 \u8865:\u6d88\u606f\u7ea7\u540c\u6b3e(config-reloader \"Failed to watch\" err=failed to list *v1.Secret \u2026 forbidden \u00d76);\u4e0e\u4e0a\u6e38 issue \u9010\u5b57\u540c\u6784"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/name: victoria-metrics-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: vm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: operator
+  namespace: vm
+  labels:
+    # deprecated, could not be removed because of deployment match selector immutability
+    control-plane: vm-operator
+
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/name: victoria-metrics-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  selector:
+    matchLabels:
+      control-plane: vm-operator
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        # deprecated, could not be removed because of deployment match selector immutability
+        control-plane: vm-operator
+
+        app.kubernetes.io/instance: default
+        app.kubernetes.io/name: victoria-metrics-operator
+        app.kubernetes.io/managed-by: kustomize
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: In
+                  values:
+                    - amd64
+                    - arm64
+                    - ppc64le
+                    - s390x
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                    - linux
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      volumes: []
+      containers:
+      - args:
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        ports: []
+        volumeMounts: []
+        image: manager
+        name: manager
+        env:
+        - name: WATCH_NAMESPACE
+          value: ""
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 120m
+            memory: 520Mi
+          requests:
+            cpu: 80m
+            memory: 120Mi
+      serviceAccountName: operator
+      terminationGracePeriodSeconds: 10

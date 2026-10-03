@@ -1,0 +1,67 @@
+apiVersion: operator.victoriametrics.com/v1
+kind: VMAnomaly
+metadata:
+  name: vmanomaly
+  namespace: default
+spec:
+  # ---- 载荷替身(2026-09-21,用户拍板) ------------------------------------
+  # 真 vmanomaly 是 enterprise 构建,没有 license 就 exit 1
+  # (`Please provide a license code`)⇒ 该 pod 从出生起就不可能 Ready,健康闸
+  # 永远拿不到健康基线(pre_health_observed=False,k=0 假警报家族第 4 形态)。
+  # 本案的故障在**算子**里(算子按 schema 严格解析本 CR 的 configRawYaml),
+  # 载荷跑什么与故障无关;但算子会给容器**无条件**挂 readiness+liveness 探针
+  # (HTTP /health,端口 8080)⇒ 占位进程必须真的在 8080 上答 200。
+  # 故换成 sweops/vmanomaly-stub:v1(见 images/vmanomaly-stub-v1.tar)。
+  # 两份 CR 必须用同一个镜像,否则"注入的故障"就不只是 schema 那一处差异了。
+  image:
+    repository: sweops/vmanomaly-stub
+    tag: v1
+  reader:
+    datasourceURL: "http://vmsingle.default.svc:8429"
+    samplingPeriod: "1m"
+  writer:
+    datasourceURL: "http://vmsingle.default.svc:8429"
+  # Config shape follows VictoriaMetrics/operator#2356 verbatim: a Prophet model
+  # with a plural `seasonalities` list (name/period/fourier_order), which is the
+  # vmanomaly v1.29.7 schema. The buggy operator unmarshals configRawYaml
+  # strictly against `prophetModel`, whose field is the SINGULAR
+  # `seasonality *prophetModelSeasonality` -> "field seasonalities not found in
+  # type config.prophetModel", reconciled before createOrUpdateApp, so the
+  # StatefulSet is never created.
+  #
+  # The `schedulers` block is NOT decoration: the fixed operator runs the full
+  # config validation (schedulers + models + reader), and a config with no
+  # scheduler fails on the fixed side too ("at least one scheduler is
+  # required") -- which would make the case undiscriminating. The issue's own
+  # example carries `schedulers: ['periodic_online']` on the model, so a
+  # matching top-level scheduler is the faithful completion, not a fabrication.
+  configRawYaml: |
+    schedulers:
+      periodic_online:
+        class: periodic
+        fit_every: 1h
+        fit_window: 1h
+        infer_every: 1h
+    models:
+      prophet_load_above_expected:
+        class: 'prophet'
+        queries: ['test']
+        schedulers: ['periodic_online']
+        detection_direction: 'above_expected'
+        seasonality:
+          name: daily
+          period: 1
+          fourier_order: 15
+        args:
+          interval_width: 0.95
+          seasonality_mode: additive
+        clip_predictions: true
+    reader:
+      class: prometheus
+      datasource_url: "http://vmsingle.default.svc:8429"
+      queries:
+        test:
+          expr: "up"
+    writer:
+      class: prometheus
+      datasource_url: "http://vmsingle.default.svc:8429"

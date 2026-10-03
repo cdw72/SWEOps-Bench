@@ -1,0 +1,128 @@
+package v1beta1
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"gopkg.in/yaml.v2"
+)
+
+func Test_buildPathWithPrefixFlag(t *testing.T) {
+	type opts struct {
+		flags       map[string]string
+		defaultPath string
+		want        string
+	}
+	f := func(o opts) {
+		t.Helper()
+		assert.Equal(t, BuildPathWithPrefixFlag(o.flags, o.defaultPath), o.want)
+	}
+
+	// default path
+	f(opts{
+		defaultPath: healthPath,
+		want:        healthPath,
+	})
+
+	// with some prefix
+	f(opts{
+		defaultPath: healthPath,
+		flags:       map[string]string{"some.flag": "some-value", vmPathPrefixFlagName: "/prefix/path/"},
+		want:        fmt.Sprintf("/prefix/path%s", healthPath),
+	})
+
+	// with bad path
+	f(opts{
+		defaultPath: healthPath,
+		flags:       map[string]string{"some.flag": "some-value", vmPathPrefixFlagName: "badpath/badvalue"},
+		want:        fmt.Sprintf("badpath/badvalue%s", healthPath),
+	})
+}
+
+func TestParsingMatch(t *testing.T) {
+	type opts struct {
+		data    string
+		match   StringOrArray
+		wantErr bool
+	}
+	f := func(o opts) {
+		t.Helper()
+		var match StringOrArray
+		err := yaml.Unmarshal([]byte(o.data), &match)
+		if (err != nil) != o.wantErr {
+			t.Errorf("Match.UnmarshalYAML() error = %v, wantErr %v", err, o.wantErr)
+		}
+		assert.Equal(t, match, o.match)
+	}
+
+	// old string match
+	f(opts{
+		data:  `http_requests_total`,
+		match: StringOrArray{"http_requests_total"},
+	})
+
+	// new list match
+	f(opts{
+		data: `
+- \{__name__=~"count1"\}
+- \{__name__=~"count2"\}
+`,
+		match: StringOrArray{"\\{__name__=~\"count1\"\\}", "\\{__name__=~\"count2\"\\}"},
+	})
+
+	// wrong type of match
+	f(opts{
+		data:    `{__name__=~"count1"}`,
+		wantErr: true,
+	})
+}
+
+func TestStringOrArrayMarshal(t *testing.T) {
+	f := func(src *StringOrArray, marshalF func(any) ([]byte, error), expected string) {
+		t.Helper()
+		got, err := marshalF(src)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		assert.Equal(t, expected, string(got))
+	}
+
+	f(&StringOrArray{"1", "2", "3"}, json.Marshal, `["1","2","3"]`)
+	f(&StringOrArray{"1"}, json.Marshal, `"1"`)
+	f(&StringOrArray{}, json.Marshal, `""`)
+	f(&StringOrArray{"1", "2", "3"}, yaml.Marshal, `- "1"
+- "2"
+- "3"
+`)
+	f(&StringOrArray{"1"}, yaml.Marshal, `"1"
+`)
+	f(&StringOrArray{}, yaml.Marshal, `""
+`)
+
+}
+
+func TestStringOrArrayUnMarshal(t *testing.T) {
+	f := func(src string, unmarshalF func([]byte, any) error, expected StringOrArray) {
+		t.Helper()
+		var got StringOrArray
+		if err := unmarshalF([]byte(src), &got); err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		assert.Equal(t, expected, got)
+	}
+	f(`["1","2","3"]`, json.Unmarshal, StringOrArray{"1", "2", "3"})
+	f(`"1"`, json.Unmarshal, StringOrArray{"1"})
+	f(`""`, json.Unmarshal, StringOrArray{""})
+	f(`- "1"
+- "2"
+- "3"
+`, yaml.Unmarshal, StringOrArray{"1", "2", "3"})
+
+	f(`"1"
+`, yaml.Unmarshal, StringOrArray{"1"})
+	f(`""
+`, yaml.Unmarshal, StringOrArray{""})
+
+}

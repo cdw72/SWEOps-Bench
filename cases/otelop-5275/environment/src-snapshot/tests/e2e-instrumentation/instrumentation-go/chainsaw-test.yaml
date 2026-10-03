@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: instrumentation-go
+spec:
+  skip: true # temporary until https://github.com/open-telemetry/opentelemetry-operator/pull/5181 is merged
+  bindings:
+    - name: podLabelSelector
+      value: app=my-golang
+    - name: appPort
+      value: "8095"
+    - name: appPath
+      value: /rolldice
+    - name: collectorLabelSelector
+      value: app.kubernetes.io/name=deployment-collector
+    - name: collectorMetricsPort
+      value: "8888"
+    - name: containerName
+      value: otc-container
+    - name: retryTimeout
+      value: "120"
+    - name: retrySleep
+      value: "5"
+    - name: searchStrings
+      value: |
+        k8s.container.name: Str(myapp)
+        k8s.deployment.name: Str(my-golang)
+    - name: catchPodLabelSelector
+      value: app=my-golang
+    - name: catchContainer
+      value: otc-container
+  steps:
+  - name: Add OpenShift namespace annotations
+    use:
+      template: ../../step-templates/openshift-namespace-annotations-root.yaml
+  - name: step-00
+    try:
+    - apply:
+        file: 00-install-collector.yaml
+    - apply:
+        file: 00-install-instrumentation.yaml
+    - sleep:
+        duration: 1s
+  - name: step-01
+    try:
+    - script:
+        content: ./add-scc.sh
+    - apply:
+        file: 01-add-scc.yaml
+  - name: step-02
+    try:
+    - apply:
+        file: 02-install-app.yaml
+    - assert:
+        file: 02-assert.yaml
+    catch:
+      - podLogs:
+          selector: app=my-golang
+  - name: Make a request to the app
+    use:
+      template: ../../step-templates/app-http-request.yaml
+  - name: Wait for telemetry data
+    use:
+      template: ../../step-templates/wait-for-telemetry.yaml
+  - name: Check the instrumented app has sent the telemetry data successfully
+    use:
+      template: ../../step-templates/validate-collector-spans.yaml

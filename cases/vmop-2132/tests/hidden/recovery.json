@@ -1,0 +1,38 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "vm",
+    "get",
+    "deploy",
+    "operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "GOOS=linux",
+   "go",
+   "build",
+   "-ldflags=-s -w",
+   "-o",
+   "/tmp/rec/bin/app",
+   "./cmd/"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/app",
+    "/app"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "vm/operator"
+ },
+ "settle": 120,
+ "slug": "vmop-2132"
+}

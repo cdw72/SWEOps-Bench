@@ -1,0 +1,61 @@
+name: "Create the release"
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'main'
+    paths:
+      - 'versions.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  get-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      current_version: ${{ steps.get-versions.outputs.current_version }}
+      desired_version: ${{ steps.get-versions.outputs.desired_version }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: "Get versions from versions.txt"
+        id: get-versions
+        run: |
+          echo "desired_version=$(grep -v '#' versions.txt | grep operator= | awk -F= '{print $2}')" >> $GITHUB_OUTPUT
+          echo "current_version=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> $GITHUB_OUTPUT
+
+  release:
+    permissions:
+      contents: write # required for creating GitHub releases
+    runs-on: ubuntu-latest
+    needs: get-versions
+    if: needs.get-versions.outputs.desired_version != needs.get-versions.outputs.current_version
+    env:
+      CURRENT_VERSION: ${{ needs.get-versions.outputs.current_version }}
+      DESIRED_VERSION: ${{ needs.get-versions.outputs.desired_version }}
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
+
+    - name: Set up Go
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version: "~1.26.4"
+        cache: false
+
+    - name: "generate release resources"
+      run: make release-artifacts IMG_PREFIX="ghcr.io/open-telemetry/opentelemetry-operator" VERSION=${DESIRED_VERSION}
+
+    - name: "create the release in GitHub"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./.ci/create-release-github.sh
+
+    # Note: the release created above is a draft, so the v${DESIRED_VERSION} git
+    # tag does not exist yet. Tagging the apis/ submodule and refreshing the Go
+    # module proxy happen once the draft is published and the tag is created, in
+    # the tag-release.yaml workflow.

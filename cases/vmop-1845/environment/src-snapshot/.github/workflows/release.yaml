@@ -1,0 +1,49 @@
+name: Release
+on:
+  release:
+    types:
+      - created
+      - prereleased
+jobs:
+  release:
+    name: Release on GitHub
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+      pages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Prepare binary cache
+        uses: actions/cache@v5
+        with:
+          path: ./bin
+          key: binary
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+          cache: true
+        id: go
+      - name: lint, test and build
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sudo apt update
+          sudo apt install -y libgpgme-dev
+          make lint test build build-installer
+          echo ${{secrets.REPO_KEY}} | docker login --username ${{secrets.REPO_USER}} --password-stdin
+          echo ${{secrets.QUAY_ACCESSKEY}} | docker login quay.io --username '${{secrets.QUAY_USER}}' --password-stdin
+          make publish
+          TAG=${TAG} REGISTRY=quay.io make olm
+          gh release upload ${{github.event.release.tag_name}} ./dist/install-no-webhook.yaml#install-no-webhook.yaml --clobber || echo "fix me NOT enough security permissions"
+          gh release upload ${{github.event.release.tag_name}} ./dist/install-with-webhook.yaml#install-with-webhook.yaml --clobber || echo "fix me NOT enough security permissions"
+          gh release upload ${{github.event.release.tag_name}} ./config/crd/overlay/crd.yaml#crd.yaml --clobber || echo "fix me NOT enough security permissions"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: olm
+          path: bundle
+          retention-days: 1

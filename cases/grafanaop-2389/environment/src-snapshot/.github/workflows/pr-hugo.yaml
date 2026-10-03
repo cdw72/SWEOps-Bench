@@ -1,0 +1,46 @@
+name: validate hugo
+
+on: pull_request
+
+# Default to bash
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Install Node.js dependencies
+        run: |
+          cd hugo
+          [[ -f package-lock.json || -f npm-shrinkwrap.json ]] && npm ci || true
+
+      - name: Build with Hugo # zizmor: ignore[template-injection] configure-pages considered safe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          make hugo
+
+      - name: Run hugo dev server in background
+        run: |
+          make hugo-dev &
+
+      - name: Validate internal links
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          make muffet-dev

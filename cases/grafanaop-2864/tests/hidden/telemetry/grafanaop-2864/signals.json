@@ -1,0 +1,19 @@
+{
+ "case": "grafanaop-2864",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "rv_version_mismatch",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 28,
+    "fixed": 0
+   },
+   "note": "Playlist/route \u66f4\u65b0\u5e26\u7a7a RV \u88ab\u62d2(does not match current version)\n\u8ba1\u6570 buggy=28/fixed=0;agent \u4fa7 operator.log \u4e32\u8ba1\u6570\u5f52\u96f6=\u4fee\u597d"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

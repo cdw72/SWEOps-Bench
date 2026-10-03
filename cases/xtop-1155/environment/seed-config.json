@@ -1,0 +1,85 @@
+{
+  "case_id": "xtop-1155",
+  "k8s_version": "v1.23",
+  "operator_bundle": "cw-bundle.yaml",
+  "operator_ready": [
+    "-n acto-namespace get deploy percona-xtradb-cluster-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "mutated-0.yaml",
+      "ns": "acto-namespace",
+      "wait": [
+        [
+          "get sts test-cluster-pxc -o jsonpath={.status.readyReplicas}",
+          "2"
+        ]
+      ],
+      "timeout": 900
+    }
+  ],
+  "poll_pre_sequence": [
+    {
+      "file": "poll-healthy.yaml",
+      "ns": "acto-namespace",
+      "wait": [
+        [
+          "get sts test-cluster-pxc -o jsonpath={.status.readyReplicas}",
+          "2"
+        ],
+        [
+          "get sts test-cluster-haproxy -o jsonpath={.status.readyReplicas}",
+          "3"
+        ]
+      ],
+      "timeout": 1200,
+      "settle": 60
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [
+    [
+      "-n acto-namespace get sts test-cluster-pxc -o jsonpath={.spec.template.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey}",
+      "kubernetes.io/hostname"
+    ],
+    [
+      "-n acto-namespace get sts test-cluster-pxc -o jsonpath={.status.readyReplicas}",
+      "2"
+    ]
+  ],
+  "fault_verify_after": [
+    [
+      "-n acto-namespace get configmap xtop-1155-scene-state -o jsonpath={.data.gen0}",
+      "2"
+    ],
+    [
+      "-n acto-namespace get configmap xtop-1155-scene-state -o jsonpath={.data.patched}",
+      "yes"
+    ],
+    [
+      "-n acto-namespace get configmap xtop-1155-scene-state -o jsonpath={.data.fault}",
+      "present"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "acto-namespace"
+  ],
+  "trigger_script": "xtop-1155-scene.sh",
+  "apply_ns": "acto-namespace",
+  "trigger_timeout": 1800,
+  "wait_nodes": 2,
+  "ctr_sockets": [
+    "/run/k3s/containerd/containerd.sock",
+    "/run/k3s/ctr-w1/containerd.sock"
+  ],
+  "images_required": [
+    "percona/percona-xtradb-cluster:8.0.27-18.1",
+    "percona/percona-xtradb-cluster-operator:1.11.0-haproxy",
+    "percona/percona-xtradb-cluster-operator:1.11.0-logcollector",
+    "percona/percona-xtradb-cluster-operator:srcbuggy-1060"
+  ],
+  "poll_healthy_steps": 1
+}

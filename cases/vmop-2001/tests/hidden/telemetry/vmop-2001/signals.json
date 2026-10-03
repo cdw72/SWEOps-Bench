@@ -1,0 +1,49 @@
+{
+ "case": "vmop-2001",
+ "confirmed": [
+  {
+   "kind": "event_msg",
+   "target": "ReconciliationError: cannot reconcile *v1.StatefulSet for vmagent",
+   "judge": "absent",
+   "values": {
+    "buggy": "cannot reconcile *v1.StatefulSet for vmagent(N): cannot hand",
+    "fixed": "(\u65e0)"
+   },
+   "note": "buggy vmagent sts reconcile \u5931\u8d25,fixed \u65e0"
+  },
+  {
+   "kind": "sts_ready",
+   "target": "vmagent-vmagent",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/1",
+    "fixed": "(\u65e0)"
+   },
+   "note": "re-ground:buggy \u9519\u540d sts 0/1 \u5361,fixed \u8be5\u540d\u4e0d\u5b58\u5728(-0 \u5206\u7247\u540d)"
+  },
+  {
+   "kind": "sts_ready",
+   "target": "vmagent-vmagent-0",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "(\u65e0)",
+    "fixed": "1/1"
+   },
+   "note": "re-ground:fixed \u5206\u7247 sts -0 \u5065\u5eb7 1/1,buggy \u672a\u5efa"
+  },
+  {
+   "kind": "event_msg",
+   "target": "FailedCreate: podAntiAffinity",
+   "judge": "absent",
+   "values": {
+    "buggy": "create Pod vmagent-vmagent-N-N \u2026 invalid: spec.affinity.podAntiAffinity\u2026",
+    "fixed": "(\u65e0)"
+   },
+   "note": "2026-09-10 \u8865:apiserver \u62d2\u7edd\u5efa pod \u7684\u76f4\u63a5\u4e8b\u4ef6(\u65e7\u53e3\u5f84\u53ea\u770b ReconciliationError,\u6f0f\u4e86 FailedCreate \u8fd9\u4e00\u534a)"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

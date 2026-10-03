@@ -1,0 +1,39 @@
+{
+ "case": "mgopone-1024",
+ "confirmed": [
+  {
+   "kind": "sts_ready",
+   "target": "test-cluster",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "0/3",
+    "fixed": "3/3"
+   },
+   "note": "\u79cd\u5b50 3 \u526f\u672c\u5168\u5361 Init"
+  },
+  {
+   "kind": "cr_state",
+   "target": "mongodbcommunity.mongodbcommunity.mongodb.com",
+   "field": "phase",
+   "judge": "match_fixed",
+   "values": {
+    "buggy": "Pending",
+    "fixed": "Running"
+   }
+  },
+  {
+   "kind": "event_msg",
+   "target": "FailedMount: \"automation-config\"",
+   "judge": "absent",
+   "values": {
+    "buggy": "MountVolume.SetUp failed for volume \"automation-config\"",
+    "fixed": "(\u65e0)"
+   },
+   "note": "2026-09-10 \u8865:init \u5bb9\u5668\u6302\u4e0d\u51fa\u7684\u76f4\u63a5\u8bc1\u636e(secret \"test-cluster-config\" not found);init \u5bb9\u5668\u65e5\u5fd7 collector \u672a\u91c7  ||  2026-09-12 \u4fee:\u540c k8ssand-1023 \u2014\u2014 event_msg \u7684 target \u5192\u53f7\u540e\u53ea\u53d6\u524d 30 \u5b57\u7b26\u505a\u5b50\u4e32,\u901a\u7528 reason FailedMount + \u901a\u7528\u524d\u7f00\u4f1a\u628a\u65e0\u5173 pod \u7684 FailedMount(local-path provisioner \u542f\u52a8\u7ade\u6001\u7b49)\u5148\u53d6\u5230 \u2192 fixed \u4fa7\u5047 MISMATCH\u3002\u6539\u7528\u5377\u540d(18 \u5b57\u7b26)\u3002\u5df2\u6838:\u8bb0\u5f55\u5feb\u7167\u4e0e\u8fc7\u95e8\u65f6\u7684 buggy/candidate capture \u9010\u5b57\u4e2d\u6027,\u539f SIGNALS_OK \u4e0d\u53d7\u5f71\u54cd\u3002"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

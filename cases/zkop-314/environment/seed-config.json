@@ -1,0 +1,65 @@
+{
+  "case_id": "zkop-314",
+  "k8s_version": "v1.21",
+  "operator_bundle": "bundle-patched.yaml",
+  "operator_ready": [
+    "-n default get deploy zookeeper-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "zkc-2.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get sts zookeeper-cluster -o jsonpath='{.status.readyReplicas}'",
+          "1"
+        ]
+      ],
+      "timeout": 900,
+      "settle": 30
+    }
+  ],
+  "settle_sec": 60,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "get configmap zkop-314-stale-state -o jsonpath='{.data.fault}'",
+      "present"
+    ],
+    [
+      "get configmap zkop-314-stale-state -o jsonpath='{.data.gen1}'",
+      "up"
+    ],
+    [
+      "get zookeeperclusters zookeeper-cluster -o jsonpath='{.metadata.name}'",
+      "zookeeper-cluster"
+    ]
+  ],
+  "image_rewrites": [],
+  "pre_manifests": [
+    "sieve-configmap.yaml"
+  ],
+  "trigger_script": "zkop-314-stale.sh",
+  "stale_proxy": {
+    "ns": "default",
+    "cluster_ip": "10.43.0.100",
+    "operator": {
+      "kind": "deploy",
+      "name": "zookeeper-operator"
+    },
+    "scope": {
+      "cr": {
+        "kind": "zookeeperclusters",
+        "group": "zookeeper.pravega.io",
+        "version": "v1beta1",
+        "namespace": "default",
+        "namePrefix": "zookeeper-cluster"
+      },
+      "resources": []
+    }
+  },
+  "trigger_timeout": 2400,
+  "poll_healthy_steps": 1
+}

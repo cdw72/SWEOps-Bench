@@ -1,0 +1,33 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: example
+spec: {}
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAuth
+metadata:
+  name: vmauth-sample
+spec:
+  userSelector: {}
+  userNamespaceSelector: {}
+  image:
+    repository: victoriametrics/vmauth
+    #tag: v1.91.0-enterprise
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "350Mi"
+    limits:
+      cpu: "500m"
+      memory: "850Mi"
+  unauthorizedUserAccessSpec:
+    targetRefs:
+      - crd:
+          kind: VMSingle
+          name: example
+          namespace: default
+        paths: ["/*", "/health"]

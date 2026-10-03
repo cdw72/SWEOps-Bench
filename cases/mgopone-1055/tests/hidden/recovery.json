@@ -1,0 +1,36 @@
+{
+ "activity": [
+  [
+   [
+    "-n",
+    "mongodb",
+    "get",
+    "deploy",
+    "mongodb-kubernetes-operator"
+   ],
+   "1/1"
+  ]
+ ],
+ "budget": 900,
+ "max_restarts": 2,
+ "operator": {
+  "build": [
+   "CGO_ENABLED=0",
+   "go",
+   "build",
+   "-o",
+   "/tmp/rec/bin/manager",
+   "./cmd/manager"
+  ],
+  "copy": [
+   [
+    "/tmp/rec/bin/manager",
+    "/usr/local/bin/manager"
+   ]
+  ],
+  "cwd": "",
+  "deploy": "mongodb/mongodb-kubernetes-operator"
+ },
+ "settle": 120,
+ "slug": "mgopone-1055"
+}

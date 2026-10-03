@@ -1,0 +1,30 @@
+name: Upgrade Tests
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  build:
+    name: Build and Test
+    runs-on:  vm-runner
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Setup build environment
+        id: setup
+        uses: ./.github/actions/setup-build-env
+      - name: Run upgrade Tests
+        env:
+          DOCKER_BUILD_ARGS: --cache-from=type=gha --cache-to=type=gha,mode=max
+          TAG: ${{ steps.setup.outputs.image-tag }}
+          LICENSE_KEY: ${{ secrets.ENTERPRISE_COMPONENTS_LICENSE_KEY }}
+        run: |
+          TAG=${TAG} make test-e2e-upgrade
+      - name: Save Go cache
+        uses: ./.github/actions/save-go-cache
+      - name: Publish reports
+        uses: ./.github/actions/publish-reports

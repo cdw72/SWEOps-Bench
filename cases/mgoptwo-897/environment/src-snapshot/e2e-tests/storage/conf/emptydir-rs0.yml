@@ -1,0 +1,16 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: emptydir
+spec:
+  image:
+  replsets:
+  - name: rs0
+    configuration: |
+      security:
+        enableEncryption: true
+    volumeSpec:
+      emptyDir: {}
+    size: 3
+  secrets:
+    users: some-users

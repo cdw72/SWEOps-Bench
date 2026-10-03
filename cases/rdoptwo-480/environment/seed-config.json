@@ -1,0 +1,45 @@
+{
+  "case_id": "rdoptwo-480",
+  "k8s_version": "v1.28",
+  "operator_bundle": "bundle_f1c547e.yaml",
+  "operator_ready": [
+    "-n redis-operator get deploy redis-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "cr-480.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get sts test-cluster-leader -o jsonpath={.status.readyReplicas}",
+          "3"
+        ]
+      ],
+      "timeout": 420
+    }
+  ],
+  "settle_sec": 30,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "-n default get sts test-cluster-leader -o jsonpath={.status.readyReplicas}",
+      "2"
+    ],
+    [
+      "-n default get pod test-cluster-leader-2 -o jsonpath='{.status.conditions[?(@.type==\"PodScheduled\")].reason}'",
+      "Unschedulable"
+    ],
+    [
+      "-n default get sts test-cluster-follower -o jsonpath={.status.readyReplicas}",
+      "3"
+    ]
+  ],
+  "image_rewrites": [],
+  "ensure_ns": [
+    "redis-operator"
+  ],
+  "trigger_script": "seed-480-trigger.sh",
+  "poll_healthy_steps": 1
+}

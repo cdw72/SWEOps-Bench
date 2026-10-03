@@ -1,0 +1,2 @@
+internal/controller/operator/factory/vmagent/rbac_test.go
+internal/controller/operator/factory/vmsingle/rbac_test.go

@@ -1,0 +1,13 @@
+# Expandable `standard` StorageClass: the dataset CRs pin
+# storageClassName: standard (carried from the original host kind
+# cluster); k3s only ships local-path, so pre-create it before the
+# operator bundle. allowVolumeExpansion is load-bearing: the fault
+# chain starts with PVC request expansion.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

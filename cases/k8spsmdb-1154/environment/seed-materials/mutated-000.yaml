@@ -1,0 +1,62 @@
+# 故障态 CR:rs0 的 storage.engine=inMemory —— buggy 算子的 IsEncryptionEnabled
+# 默认值缺陷从首次 reconcile 就在场(这就是本案的故障)。
+#
+# ★ 2026-09-20:四个副本段各补一条 `affinity.antiAffinityTopologyKey: none`。
+#   N3 env 是**单节点** k3s(docker-compose 里只有一个 server,--cluster-init,无
+#   agent),而 percona-server-mongodb-operator 的缺省反亲和要求按
+#   `kubernetes.io/hostname` 打散 ⇒ size=3 的副本段在单节点上**永远只能起 1 个**
+#   ⇒ rs0/rs1/configsvrReplSet 三个 sts 长期卡在 x/3 ⇒ 快照里恒有一条结构性 ⚠。
+#   那不是本案的故障,是 env 保真缺陷(同 cassop-696 的 3-rack 单节点帽;
+#   见 memory: 单节点保真缺陷类:反亲和打假故障)。帽一戴,健康态才真能到 READY,
+#   `pre_health_observed` 才可能是 true。
+#   ★ 同一处帽也必须出现在 poll_overlays/k8spsmdb-1154/files/poll-healthy.yaml ——
+#     否则 pre 相位的健康 CR 照样起不来,健康期照样不存在。
+#   ★ 故障语义零变化:只动调度打散,不动 storage.engine / 副本数 / 镜像。
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: test-cluster
+spec:
+  crVersion: 1.16.0
+  image: percona/percona-server-mongodb:7.0.8-5
+  replsets:
+  - affinity:
+      antiAffinityTopologyKey: none
+    name: rs0
+    size: 3
+    storage:
+      engine: inMemory
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 3Gi
+  - affinity:
+      antiAffinityTopologyKey: none
+    name: rs1
+    size: 3
+    volumeSpec:
+      persistentVolumeClaim:
+        resources:
+          requests:
+            storage: 3Gi
+  secrets:
+    users: test-cluster
+  sharding:
+    configsvrReplSet:
+      affinity:
+        antiAffinityTopologyKey: none
+      size: 3
+      volumeSpec:
+        persistentVolumeClaim:
+          resources:
+            requests:
+              storage: 3Gi
+    enabled: true
+    mongos:
+      affinity:
+        antiAffinityTopologyKey: none
+      size: 3
+  upgradeOptions:
+    apply: disabled
+    schedule: 0 2 * * *

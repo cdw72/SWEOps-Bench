@@ -1,0 +1,85 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Auto Pilot
+    categories: Database,Big Data,OpenShift Optional
+    certified: "true"
+    description: |
+      Simple provisioning, turn-key operations, and automated remediation of Apache Cassandra clusters
+    repository: https://github.com/k8ssandra/cass-operator
+    support: DataStax
+    features.operators.openshift.io/disconnected: "false"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
+    features.operators.openshift.io/cnf: "false"
+    features.operators.openshift.io/cni: "false"
+    features.operators.openshift.io/csi: "false"
+  name: cass-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: CassandraDatacenter is the Schema for the cassandradatacenters
+        API
+      displayName: Cassandra Datacenter
+      kind: CassandraDatacenter
+      name: cassandradatacenters.cassandra.datastax.com
+      version: v1beta1
+    - description: CassandraTask is the Schema for the cassandrajobs API
+      displayName: Cassandra Task
+      kind: CassandraTask
+      name: cassandratasks.control.k8ssandra.io
+      version: v1alpha1
+  description: ../../docs/developer/csv-description.md
+  displayName: DataStax Kubernetes Operator for Apache Cassandra
+  icon:
+  - base64data: |
+      images/ds.png
+    mediatype: image/png
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: true
+    type: OwnNamespace
+  - supported: true
+    type: SingleNamespace
+  - supported: true
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - k8ssandra
+  - cass-operator
+  - DataStax Enterprise
+  - Apache Cassandra
+  - DSE
+  - C*
+  - Cassandra
+  links:
+  - name: DataStax
+    url: https://datastax.com
+  - name: Operator GitHub Repo
+    url: https://github.com/k8ssandra/cass-operator
+  - name: Config Builder GitHub Repo
+    url: https://github.com/datastax/cass-config-builder
+  - name: Documentation [1]
+    url: https://github.com/k8ssandra/cass-operator/tree/master/docs/user
+  - name: Documentation [2]
+    url: https://docs.datastax.com/en/cass-operator/doc/cass-operator/cassOperatorTOC.html
+  maintainers:
+  - email: cass-operator@datastax.com
+    name: DataStax Operator Team
+  maturity: stable
+  minKubeVersion: 1.21.0
+  provider:
+    name: DataStax
+  version: 0.0.0

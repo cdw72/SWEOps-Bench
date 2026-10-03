@@ -1,0 +1,25 @@
+# Verify if a pull request contains the labels required to enable the merge button.
+name: require-labels
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions: read-all
+
+jobs:
+  require-labels:
+    name: Require labels
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require labels
+        uses: agilepathway/label-checker@c3d16ad512e7cea5961df85ff2486bb774caf3c5 # v1.6.65
+        with:
+          any_of: "ok to merge :ok_hand:"
+          none_of: "do not merge"
+          repo_token: ${{ secrets.GITHUB_TOKEN }}

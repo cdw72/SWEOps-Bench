@@ -1,0 +1,141 @@
+version: 2
+project_name: cnpg
+
+release:
+  github:
+    owner: cloudnative-pg
+    name: cloudnative-pg
+
+env:
+  - GO111MODULE=on
+  - CGO_ENABLED=0
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+- id: manager
+  binary: manager/manager_{{ .Arch }}
+  main: cmd/manager/main.go
+  no_unique_dist_dir: true
+  gcflags:
+    - all=-trimpath={{.Env.GOPATH}};{{.Env.PWD}}
+  ldflags:
+    - -s
+    - -w
+    - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildVersion={{.Env.VERSION}}
+    - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildCommit={{.Env.COMMIT}}
+    - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildDate={{.Env.DATE}}
+  goos:
+    - linux
+  goarch:
+    - amd64
+    - arm64
+
+- id: manager-race
+  binary: manager/manager_{{ .Arch }}
+  main: cmd/manager/main.go
+  no_unique_dist_dir: true
+  skip: >-
+    {{ if and (isEnvSet "RACE") (eq .Env.RACE "true") }}false{{ else }}true{{ end }}
+  gcflags:
+    - all=-trimpath={{.Env.GOPATH}};{{.Env.PWD}}
+  ldflags:
+    - -race
+    - -s
+    - -w
+    - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildVersion={{.Env.VERSION}}
+    - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildCommit={{.Env.COMMIT}}
+    - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildDate={{.Env.DATE}}
+  goos:
+    - linux
+  goarch:
+    - amd64
+    - arm64
+
+- id: kubectl-cnpg
+  binary: kubectl-cnpg
+  main: cmd/kubectl-cnpg/main.go
+  gcflags:
+  - all=-trimpath={{.Env.GOPATH}};{{.Env.PWD}}
+  ldflags:
+  - -s
+  - -w
+  - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildVersion={{.Env.VERSION}}
+  - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildCommit={{.Env.COMMIT}}
+  - -X github.com/cloudnative-pg/cloudnative-pg/pkg/versions.buildDate={{.Env.DATE}}
+  goos:
+  - darwin
+  - linux
+  - windows
+  goarch:
+  - amd64
+  - arm64
+  - ppc64le
+  - s390x
+  goarm:
+  - 5
+  - 6
+  - 7
+  ignore:
+  - goos: windows
+    goarch: ppc64le
+  - goos: windows
+    goarch: s390x
+
+archives:
+- name_template: >-
+    kubectl-cnpg_{{ .Version }}_
+    {{- .Os }}_
+    {{- if eq .Arch "amd64" }}x86_64
+    {{- else }}{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ end }}
+  ids:
+  - kubectl-cnpg
+
+nfpms:
+  - id: kubectl-cnpg
+    file_name_template: >-
+      kubectl-cnpg_{{ .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ end }}
+    homepage: https://github.com/cloudnative-pg/cloudnative-pg
+    bindir: /usr/local/bin
+    maintainer: 'Marco Nenciarini <marco.nenciarini@enterprisedb.com>'
+    ids:
+      - kubectl-cnpg
+    formats:
+      - rpm
+      - deb
+    rpm:
+      signature:
+        key_file: gpg_signing_key.asc
+    deb:
+      signature:
+        key_file: gpg_signing_key.asc
+
+checksum:
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  disable: true
+
+sboms:
+  - artifacts: archive
+  - id: packages
+    artifacts: package
+
+signs:
+  - artifacts: all
+    args: ["--batch", "-u", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
+
+krews:
+  - name: cnpg
+    homepage: https://github.com/cloudnative-pg/cloudnative-pg
+    short_description: 'Manage your CloudNativePG clusters'
+    skip_upload: true
+    description: 'This plugin provides multiple commands to help you manage your CloudNativePG clusters.'

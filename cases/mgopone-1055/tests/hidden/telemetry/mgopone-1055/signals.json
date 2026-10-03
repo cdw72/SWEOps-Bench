@@ -1,0 +1,29 @@
+{
+ "case": "mgopone-1055",
+ "confirmed": [
+  {
+   "kind": "log_sig",
+   "target": "index_panic_1055",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 3,
+    "fixed": 0
+   },
+   "note": "panic: index out of range [0] with length 0(\u955c\u50cf mgopone-1054 \u540c\u6784\u5224\u636e);fixed \u4fa7 'could not configure scram' \u5e72\u51c0\u62a5\u9519\u4e3a\u5bf9\u7167"
+  },
+  {
+   "kind": "restart_count",
+   "target": "mongodb/mongodb-kubernetes-operator/mongodb-kubernetes-operator",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 4,
+    "fixed": 0
+   },
+   "note": "operator \u968f panic \u91cd\u542f;pod 0/1 CrashLoop vs 1/1 Running \u4f50\u8bc1"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

@@ -1,0 +1,126 @@
+knative-serving:
+  primary:
+    # We don't use `github:` as a source to avoid needing to manage tokens.
+    s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "serving/previous"
+    include:
+      - ".*.yaml"
+    exclude:
+      - "monitoring.*"
+      - "serving.yaml"
+      - "serving-storage-version-migration.yaml"
+      - ".*domain.*"
+      - "release.yaml"
+      - ".*-nscert.yaml"
+ingress:
+  alternatives: true
+  primary:
+    s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "serving/previous"
+  additional:
+  - s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "net-istio/previous"
+    ingressService: istio
+    include:
+    - "net-istio.yaml"
+  - s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "net-contour/previous"
+    ingressService: contour
+    include:
+      - "net-contour.yaml"
+  - s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "net-kourier/previous"
+    ingressService: kourier
+    include:
+      - "kourier.yaml"
+knative-eventing:
+  primary:
+    s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "eventing/previous"
+    include:
+      - ".*.yaml"
+    exclude:
+      - ".*-pre-install-jobs.yaml"
+      - "eventing.yaml"
+      - "appender.yaml"
+      - "event-display.yaml"
+      - "heartbeats.yaml"
+      - "recordevents.yaml"
+      - "websocket-source.yaml"
+    # Eventing packaging has evolved in non-standard ways over the last few releases.
+    overrides:
+      v0.18:
+        include:
+          - ".*.yaml"
+        exclude:
+          # v0.18 has a pre-install job
+          - "eventing.yaml"
+eventing-source:
+  alternatives: true
+  primary:
+    s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "eventing/previous"
+  additional:
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "eventing-kafka-broker/previous"
+      eventingService: kafka
+      include:
+        - "eventing-kafka-source.yaml"
+        - "eventing-kafka-controller.yaml"
+        - "eventing-kafka-post-install.yaml"
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "eventing-github/previous"
+      eventingService: github
+      include:
+        - "github.yaml"
+      exclude:
+        - "mt-github.yaml"
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "eventing-redis/previous"
+      eventingService: redis
+      include:
+        - "redis-source.yaml"
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "eventing-rabbitmq/previous"
+      eventingService: rabbitmq
+      include:
+        - "rabbitmq-source.yaml"
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "eventing-gitlab/previous"
+      eventingService: gitlab
+      include:
+        - "gitlab.yaml"
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "eventing-ceph/previous"
+      eventingService: ceph
+      include:
+        - "ceph.yaml"
+security-guard:
+  alternatives: true
+  primary:
+    s3:
+      bucket: "gs-noauth://knative-releases"
+      prefix: "security-guard/previous"
+  additional:
+    - s3:
+        bucket: "gs-noauth://knative-releases"
+        prefix: "security-guard/previous"
+      include:
+        - "guard-service.yaml"
+        - "queue-proxy.yaml"
+        - "gate-account.yaml"
+        - "guardian-crd.yaml"
+        - "service-account.yaml"

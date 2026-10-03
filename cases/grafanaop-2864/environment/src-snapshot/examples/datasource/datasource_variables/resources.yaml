@@ -1,0 +1,65 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  labels:
+    dashboards: "grafana"
+spec:
+  config:
+    log:
+      mode: "console"
+    auth:
+      disable_login_form: "false"
+    security:
+      admin_user: root
+      admin_password: secret
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: credentials
+  namespace: grafana
+stringData:
+  PROMETHEUS_TOKEN: secret_token
+  EXTRA_TRACEID: customTraceId
+type: Opaque
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: grafanadatasource-sample
+spec:
+  valuesFrom:
+    - targetPath: "secureJsonData.httpHeaderValue1"
+      valueFrom:
+        secretKeyRef:
+          name: "credentials"
+          key: "PROMETHEUS_TOKEN"
+    - targetPath: 'jsonData.exemplarTraceIdDestinations[1].name'
+      valueFrom:
+        configMapKeyRef:
+          name: dynamic-settings
+          key: dynamicTraceId
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  datasource:
+    name: prometheus
+    type: prometheus
+    access: proxy
+    basicAuth: true
+    url: http://prometheus-service:9090
+    isDefault: true
+    jsonData:
+      "tlsSkipVerify": true
+      "timeInterval": "5s"
+      httpHeaderName1: "Authorization"
+      exemplarTraceIdDestinations:
+        - name: 'traceID'
+        - name: '${EXTRA_TRACEID}'
+    secureJsonData:
+      "httpHeaderValue1": "Bearer ${PROMETHEUS_TOKEN}"
+      exemplarTraceIdDestinations:
+        - name: 'traceID'
+        - name: '${dynamicTraceId}'

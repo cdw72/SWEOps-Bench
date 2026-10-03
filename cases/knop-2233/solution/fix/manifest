@@ -1,0 +1,2 @@
+pkg/reconciler/common/kubernetes_min_version.go
+pkg/reconciler/common/transformers.go

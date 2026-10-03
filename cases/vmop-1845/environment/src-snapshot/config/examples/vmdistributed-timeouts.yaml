@@ -1,0 +1,39 @@
+apiVersion: operator.victoriametrics.com/v1alpha1
+kind: VMDistributed
+metadata:
+  name: sample-custom-timeout
+spec:
+  vmauth:
+    name: global-vmauth
+    spec:
+      replicaCount: 1
+  zoneCommon:
+    readyTimeout: 10m
+    updatePause: 1m
+    vmagent:
+      spec:
+        replicaCount: 1
+    vmcluster:
+      spec:
+        vmstorage:
+          replicaCount: 1
+        vmselect:
+          replicaCount: 1
+        vminsert:
+          replicaCount: 1
+  zones:
+    - name: us-east-1
+      vmcluster:
+        spec:
+          vmselect:
+            replicaCount: 3
+    - name: us-west-2
+      vmcluster:
+        spec:
+          vmselect:
+            replicaCount: 4
+    - name: eu-west-1
+      vmcluster:
+        spec:
+          vmselect:
+            replicaCount: 2

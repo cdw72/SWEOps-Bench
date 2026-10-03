@@ -1,0 +1,18 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMProbe
+metadata:
+  labels:
+    app.kubernetes.io/name: vm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: agent
+spec:
+  jobName: static-probe
+  vmProberSpec:
+    # by default scheme http, and path is /probe
+    url: prometheus-blackbox-exporter.default.svc:9115
+  module: http_2xx
+  targets:
+    staticConfig:
+      targets:
+      - vmagent-example.default.svc:8429/health
+  interval: 2s

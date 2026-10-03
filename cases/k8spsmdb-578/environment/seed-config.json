@@ -1,0 +1,47 @@
+{
+  "case_id": "k8spsmdb-578",
+  "k8s_version": "v1.21",
+  "operator_bundle": "bundle-patched.yaml",
+  "operator_ready": [
+    "-n default get deploy percona-server-mongodb-operator",
+    "1/1"
+  ],
+  "operator_ready_timeout": 1500,
+  "cr_sequence": [
+    {
+      "file": "secrets.yaml",
+      "ns": "default"
+    },
+    {
+      "file": "cr-shard-578.yaml",
+      "ns": "default",
+      "wait": [
+        [
+          "get secret mongodb-cluster-ssl -o jsonpath={.metadata.name}",
+          "mongodb-cluster-ssl"
+        ]
+      ],
+      "timeout": 900,
+      "settle": 120
+    }
+  ],
+  "settle_sec": 240,
+  "fault_verify": [],
+  "fault_verify_after": [
+    [
+      "get configmap k8spsmdb-578-drift-injected -o jsonpath={.metadata.name}",
+      "k8spsmdb-578-drift-injected"
+    ],
+    [
+      "get secret mongodb-cluster-ssl -o jsonpath={.metadata.name}",
+      "mongodb-cluster-ssl"
+    ],
+    [
+      "get sts mongodb-cluster-rs0 -o jsonpath={.status.readyReplicas}",
+      "3"
+    ]
+  ],
+  "image_rewrites": [],
+  "trigger_script": "k8spsmdb-578-drift.sh",
+  "poll_healthy_steps": 2
+}

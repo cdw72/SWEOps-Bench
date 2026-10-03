@@ -1,0 +1,11 @@
+apiVersion: v1
+data:
+  INHERITED_ANNOTATIONS: categories, example.com/*
+  # wrong example2.com on purpose to check overwriting via secret works fine
+  INHERITED_LABELS: environment, example2.com/*
+  MONITORING_QUERIES_CONFIGMAP: ""
+  CLUSTERS_ROLLOUT_DELAY: '1'
+  INSTANCES_ROLLOUT_DELAY: '1'
+kind: ConfigMap
+metadata:
+  name: cnpg-controller-manager-config

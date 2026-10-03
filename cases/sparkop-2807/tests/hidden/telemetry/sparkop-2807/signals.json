@@ -1,0 +1,28 @@
+{
+ "case": "sparkop-2807",
+ "confirmed": [
+  {
+   "kind": "operator_log",
+   "target": "panic_lines",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 45,
+    "fixed": 0
+   }
+  },
+  {
+   "kind": "clog_sig",
+   "target": "invalid memory address or nil pointer dereference",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 24,
+    "fixed": 0
+   },
+   "note": "\u540c\u56e0\u8de8\u6e20\u9053\u5197\u4f59(2026-09-11 \u5168\u5e93\u91cd\u626b):\u5bb9\u5668\u65e5\u5fd7 panic \u4e32 24/0,operator.log 45/0 \u5df2\u6709"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

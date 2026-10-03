@@ -1,0 +1,35 @@
+apiVersion: sparkoperator.k8s.io/v1alpha1
+kind: SparkConnect
+metadata:
+  name: sc
+  namespace: default
+spec:
+  sparkVersion: 3.5.0
+  # ---- 载荷替身(2026-09-22,用户令「落地 sparkop-2807 的载荷替身」) --------
+  # `apache/spark:3.5.0` 里**没有 spark-connect jar**(tar 全层搜过,只有
+  # bin/spark-connect-shell 与 sbin/start-connect-server.sh)⇒ 算子起的
+  # connect server 报 `Failed to load class ...SparkConnectServer` /
+  # `You need to specify Spark Connect jars with --jars or --packages`
+  # ⇒ sc-server 反复重启 ⇒ CR 两个相位都是 state: NotReady
+  # ⇒ k=0 的"健康相位"自带 CrashLoopBackOff + BackOff ⇒ agent 假警报的病根。
+  # 本案的故障在**算子**里(options.go:imageOption 在 nil 检查之前解引用
+  # executor template),载荷跑什么与故障无关(fault_verify 只 grep 算子日志
+  # 的 nil pointer dereference + sparkconnect/options.go)。
+  # 故换成 sweops/spark-stub:v1(见 images/spark-stub-v1.tar):算子把
+  # connect server 容器建成 Command=["bash","-c"] + Args=[那串 start-connect-server
+  # 命令](ENTRYPOINT 被丢弃)⇒ 该镜像自带一个 /bin/bash 替身,忽略这套命令、
+  # 只保持存活(PreStop 那记 `bash -c stop-connect-server.sh` 例外,立即退出)。
+  # 本文件与 poll-healthy.yaml 必须是同一个替身镜像,否则"注入的故障"就
+  # 不只是"摘掉 executor template"那一处差异了。
+  image: sweops/spark-stub:v1
+  server:
+    template:
+      spec:
+        containers:
+        - name: spark-kubernetes-driver
+          image: sweops/spark-stub:v1
+        serviceAccount: spark-operator-spark
+  executor:
+    instances: 2
+    cores: 1
+    memory: 512m

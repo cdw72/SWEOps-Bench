@@ -1,0 +1,63 @@
+{
+  "case_id": "cassop-696",
+  "k8s_version": "v1.23",
+  "operator_bundle": "bundle.yaml",
+  "ensure_sc": [
+    {
+      "name": "standard"
+    }
+  ],
+  "operator_ready": [
+    "-n cass-operator get deploy cass-operator-controller-manager",
+    "1/1"
+  ],
+  "cr_sequence": [
+    {
+      "file": "mutated-000.yaml",
+      "ns": "cass-operator",
+      "wait": [
+        [
+          "get sts",
+          "development-test-cluster-rack1-sts"
+        ],
+        [
+          "get pods",
+          "Running"
+        ]
+      ],
+      "timeout": 420
+    }
+  ],
+  "settle_sec": 60,
+  "image_rewrites": [
+    [
+      "k8ssandra/cass-operator:srcbuggy-696",
+      "k8ssandra/cass-operator:v1.22.1"
+    ]
+  ],
+  "operator_ns": "default",
+  "pre_manifests": [
+    "cert-manager.yaml",
+    "block-rack1.yaml"
+  ],
+  "pre_ready": [
+    [
+      "-n cert-manager get endpoints cert-manager-webhook",
+      "10250"
+    ],
+    [
+      "get mutatingwebhookconfiguration cert-manager-webhook -o jsonpath='{.webhooks[*].clientConfig.caBundle}'",
+      "LS0t"
+    ],
+    [
+      "get validatingwebhookconfiguration cert-manager-webhook -o jsonpath='{.webhooks[*].clientConfig.caBundle}'",
+      "LS0t"
+    ]
+  ],
+  "poll_skip_pre": [
+    "block-rack1.yaml"
+  ],
+  "poll_healthy_steps": 1,
+  "poll_fault_script": "poll-inject.sh",
+  "poll_fault_settle": 180
+}

@@ -1,0 +1,479 @@
+package e2e
+
+import (
+	"context"
+	"fmt"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	vmv1 "github.com/VictoriaMetrics/operator/api/operator/v1"
+	vmv1beta1 "github.com/VictoriaMetrics/operator/api/operator/v1beta1"
+	"github.com/VictoriaMetrics/operator/internal/controller/operator/factory/finalize"
+)
+
+//nolint:dupl,lll
+var _ = Describe("test vtcluster Controller", Label("vt", "cluster", "vtcluster"), func() {
+
+	Context("e2e vtcluster", func() {
+		var ctx context.Context
+		namespace := fmt.Sprintf("default-%d", GinkgoParallelProcess())
+		nsn := types.NamespacedName{
+			Namespace: namespace,
+		}
+		BeforeEach(func() {
+			ctx = context.Background()
+		})
+		AfterEach(func() {
+			Expect(finalize.SafeDelete(ctx, k8sClient, &vmv1.VTCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      nsn.Name,
+					Namespace: nsn.Namespace,
+				},
+			})).ToNot(HaveOccurred())
+			waitResourceDeleted(ctx, nsn, &vmv1.VTClusterList{})
+		})
+
+		DescribeTable("should create", func(name string, cr *vmv1.VTCluster, verify func(cr *vmv1.VTCluster)) {
+			nsn.Name = name
+			cr.Name = name
+			expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+				Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+			}, vmv1beta1.UpdateStatusOperational)
+
+			var created vmv1.VTCluster
+			Expect(k8sClient.Get(ctx, nsn, &created)).ToNot(HaveOccurred())
+			verify(&created)
+		},
+			Entry("with UseProxyProtocol on all components", "proxy-protocol",
+				&vmv1.VTCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1.VTClusterSpec{
+						Storage: &vmv1.VTStorage{
+							RetentionPeriod: "1",
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+								ExtraArgs: map[string]string{
+									"httpListenAddr.useProxyProtocol": "true",
+								},
+							},
+						},
+						Select: &vmv1.VTSelect{
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+								ExtraArgs: map[string]string{
+									"httpListenAddr.useProxyProtocol": "true",
+								},
+							},
+						},
+						Insert: &vmv1.VTInsert{
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+								ExtraArgs: map[string]string{
+									"httpListenAddr.useProxyProtocol": "true",
+								},
+							},
+						},
+					},
+				},
+				func(cr *vmv1.VTCluster) {},
+			),
+		)
+
+		baseVTCluster := &vmv1.VTCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+			},
+			Spec: vmv1.VTClusterSpec{
+				Insert: &vmv1.VTInsert{},
+				Select: &vmv1.VTSelect{},
+				Storage: &vmv1.VTStorage{
+					RetentionPeriod: "1",
+					CommonAppsParams: vmv1beta1.CommonAppsParams{
+						ReplicaCount: ptr.To[int32](1),
+					},
+				},
+			},
+		}
+		type testStep struct {
+			setup  func(*vmv1.VTCluster)
+			modify func(*vmv1.VTCluster)
+			verify func(*vmv1.VTCluster)
+		}
+
+		DescribeTable("should perform update steps",
+			func(name string, initCR *vmv1.VTCluster, steps ...testStep) {
+				initCR.Name = name
+				initCR.Namespace = namespace
+				nsn.Name = name
+				// setup test
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, initCR)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				for _, step := range steps {
+					if step.setup != nil {
+						step.setup(initCR)
+					}
+					// perform update
+					var toUpdate vmv1.VTCluster
+					expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualDeploymentAppReadyTimeout, func() {
+						Expect(k8sClient.Get(ctx, nsn, &toUpdate)).ToNot(HaveOccurred())
+						step.modify(&toUpdate)
+						Expect(k8sClient.Update(ctx, &toUpdate)).ToNot(HaveOccurred())
+					}, vmv1beta1.UpdateStatusOperational)
+
+					var updated vmv1.VTCluster
+					Expect(k8sClient.Get(ctx, nsn, &updated)).ToNot(HaveOccurred())
+
+					// verify results
+					step.verify(&updated)
+				}
+			},
+			Entry("add and remove annotations with strict security", "manage-annotations",
+				baseVTCluster.DeepCopy(),
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						cr.Spec.ManagedMetadata = &vmv1beta1.ManagedObjectsMetadata{
+							Annotations: map[string]string{
+								"added-annotation": "some-value",
+							},
+						}
+						cr.Spec.UseStrictSecurity = ptr.To(true)
+					},
+					verify: func(cr *vmv1.VTCluster) {
+						nsss := []types.NamespacedName{
+							{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentStorage)},
+						}
+						expectedAnnotations := map[string]string{"added-annotation": "some-value"}
+						for _, nss := range nsss {
+							assertAnnotationsOnObjects(ctx, nss, []client.Object{&appsv1.StatefulSet{}, &corev1.Service{}}, expectedAnnotations)
+						}
+						for _, nss := range nsss {
+							sts := &appsv1.StatefulSet{}
+							Expect(k8sClient.Get(ctx, nss, sts)).ToNot(HaveOccurred())
+							assertStrictSecurity(sts.Spec.Template.Spec)
+						}
+						nsss = []types.NamespacedName{
+							{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert)},
+							{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect)},
+						}
+						for _, nss := range nsss {
+							sts := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, nss, sts)).ToNot(HaveOccurred())
+							assertStrictSecurity(sts.Spec.Template.Spec)
+						}
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						delete(cr.Spec.ManagedMetadata.Annotations, "added-annotation")
+					},
+					verify: func(cr *vmv1.VTCluster) {
+						nsss := []types.NamespacedName{
+							{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentStorage)},
+						}
+						expectedAnnotations := map[string]string{"added-annotation": ""}
+						for _, nss := range nsss {
+							assertAnnotationsOnObjects(ctx, nss, []client.Object{&appsv1.StatefulSet{}, &corev1.Service{}}, expectedAnnotations)
+						}
+						nsss = []types.NamespacedName{
+							{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert)},
+							{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect)},
+						}
+						for _, nss := range nsss {
+							assertAnnotationsOnObjects(ctx, nss, []client.Object{&appsv1.Deployment{}, &corev1.Service{}}, expectedAnnotations)
+						}
+
+					},
+				},
+			),
+			Entry("vtcluster with requests lb", "requests-lb",
+				baseVTCluster.DeepCopy(),
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						cr.Spec.RequestsLoadBalancer.Enabled = true
+					},
+					verify: func(cr *vmv1.VTCluster) {
+
+						var dep appsv1.Deployment
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(vmv1beta1.ClusterComponentBalancer), Namespace: namespace}, &dep)).ToNot(HaveOccurred())
+
+						var svc corev1.Service
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect), Namespace: namespace}, &svc)).ToNot(HaveOccurred())
+						Expect(svc.Spec.Selector).To(Equal(cr.SelectorLabels(vmv1beta1.ClusterComponentBalancer)))
+
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert), Namespace: namespace}, &svc)).ToNot(HaveOccurred())
+						Expect(svc.Spec.Selector).To(Equal(cr.SelectorLabels(vmv1beta1.ClusterComponentBalancer)))
+
+						expectHTTPRequestToSucceed(ctx, httpRequestOpts{
+							dstURL:       fmt.Sprintf("http://%s.%s.svc:10481/insert/ready", cr.PrefixedName(vmv1beta1.ClusterComponentInsert), namespace),
+							expectedCode: 200,
+						})
+						expectHTTPRequestToSucceed(ctx, httpRequestOpts{
+							dstURL:       fmt.Sprintf("http://%s.%s.svc:10471/select/logsql/query?query=*", cr.PrefixedName(vmv1beta1.ClusterComponentSelect), namespace),
+							payload:      ``,
+							expectedCode: 200,
+						})
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						cr.Spec.RequestsLoadBalancer.Enabled = false
+					},
+					verify: func(cr *vmv1.VTCluster) {
+						waitResourceDeleted(ctx, types.NamespacedName{Name: cr.PrefixedName(vmv1beta1.ClusterComponentBalancer), Namespace: namespace}, &appsv1.DeploymentList{})
+
+						var svc corev1.Service
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect), Namespace: namespace}, &svc)).ToNot(HaveOccurred())
+						Expect(svc.Spec.Selector).To(Equal(cr.SelectorLabels(vmv1beta1.ClusterComponentSelect)))
+
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert), Namespace: namespace}, &svc)).ToNot(HaveOccurred())
+						Expect(svc.Spec.Selector).To(Equal(cr.SelectorLabels(vmv1beta1.ClusterComponentInsert)))
+
+						expectHTTPRequestToSucceed(ctx, httpRequestOpts{
+							dstURL:       fmt.Sprintf("http://%s.%s.svc:10481/insert/ready", cr.PrefixedName(vmv1beta1.ClusterComponentInsert), namespace),
+							expectedCode: 200,
+						})
+						expectHTTPRequestToSucceed(ctx, httpRequestOpts{
+							dstURL:       fmt.Sprintf("http://%s.%s.svc:10471/select/logsql/query?query=*", cr.PrefixedName(vmv1beta1.ClusterComponentSelect), namespace),
+							payload:      ``,
+							expectedCode: 200,
+						})
+					},
+				},
+			),
+
+			Entry("by upscaling and downscaling components", "scale",
+				baseVTCluster.DeepCopy(),
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						By("upscaling vtinsert, removing vtselect", func() {
+							cr.Spec.Select = nil
+							cr.Spec.Insert.ReplicaCount = ptr.To(int32(2))
+							cr.Spec.Storage.ReplicaCount = ptr.To(int32(1))
+						})
+					},
+					verify: func(cr *vmv1.VTCluster) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentStorage)}
+						sts := &appsv1.StatefulSet{}
+						Expect(k8sClient.Get(ctx, nsn, sts)).ToNot(HaveOccurred())
+						Expect(*sts.Spec.Replicas).To(Equal(int32(1)))
+						nsn = types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert)}
+						dep := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, nsn, dep)).ToNot(HaveOccurred())
+						Expect(*dep.Spec.Replicas).To(Equal(int32(2)))
+
+						// vtselect must be removed
+						nsn = types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect)}
+						waitResourceDeleted(ctx, nsn, &appsv1.DeploymentList{})
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						By("upscaling vtselect, removing vtinsert", func() {
+							cr.Spec.Select = &vmv1.VTSelect{
+								CommonAppsParams: vmv1beta1.CommonAppsParams{
+									ReplicaCount: ptr.To(int32(2)),
+								},
+							}
+							cr.Spec.Insert = nil
+							cr.Spec.Storage.ReplicaCount = ptr.To(int32(2))
+						})
+					},
+					verify: func(cr *vmv1.VTCluster) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentStorage)}
+						sts := &appsv1.StatefulSet{}
+						Expect(k8sClient.Get(ctx, nsn, sts)).ToNot(HaveOccurred())
+						Expect(*sts.Spec.Replicas).To(Equal(int32(2)))
+						nsn = types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect)}
+						dep := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, nsn, dep)).ToNot(HaveOccurred())
+						Expect(*dep.Spec.Replicas).To(Equal(int32(2)))
+						// vtinsert must be removed
+						nsn = types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert)}
+						waitResourceDeleted(ctx, nsn, &appsv1.DeploymentList{})
+					},
+				},
+				testStep{
+					modify: func(cr *vmv1.VTCluster) {
+						By("downscaling all components to 0 replicas", func() {
+							cr.Spec.Select = &vmv1.VTSelect{
+								CommonAppsParams: vmv1beta1.CommonAppsParams{
+									ReplicaCount: ptr.To(int32(0)),
+								},
+							}
+							cr.Spec.Insert = &vmv1.VTInsert{
+								CommonAppsParams: vmv1beta1.CommonAppsParams{
+									ReplicaCount: ptr.To(int32(0)),
+								},
+							}
+							cr.Spec.Storage.ReplicaCount = ptr.To(int32(0))
+						})
+					},
+					verify: func(cr *vmv1.VTCluster) {
+						nsn := types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentStorage)}
+						sts := &appsv1.StatefulSet{}
+						Expect(k8sClient.Get(ctx, nsn, sts)).ToNot(HaveOccurred())
+						Expect(*sts.Spec.Replicas).To(Equal(int32(0)))
+						dep := &appsv1.Deployment{}
+						nsn = types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentInsert)}
+						Expect(k8sClient.Get(ctx, nsn, dep)).ToNot(HaveOccurred())
+						Expect(*dep.Spec.Replicas).To(Equal(int32(0)))
+						nsn = types.NamespacedName{Namespace: namespace, Name: cr.PrefixedName(vmv1beta1.ClusterComponentSelect)}
+						Expect(k8sClient.Get(ctx, nsn, dep)).ToNot(HaveOccurred())
+						Expect(*dep.Spec.Replicas).To(Equal(int32(0)))
+					},
+				},
+			),
+		)
+
+		Context("status transitions", func() {
+			JustBeforeEach(func() {
+				ctx = context.Background()
+			})
+			It("should reach operational after creation", func() {
+				nsn.Name = "vtcluster-status-created"
+				cr := &vmv1.VTCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1.VTClusterSpec{
+						Insert: &vmv1.VTInsert{},
+						Select: &vmv1.VTSelect{},
+						Storage: &vmv1.VTStorage{
+							RetentionPeriod: "1",
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+							},
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+			})
+
+			It("should transition operational→expanding→operational on spec update", func() {
+				nsn.Name = "vtcluster-status-update"
+				cr := &vmv1.VTCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1.VTClusterSpec{
+						Insert: &vmv1.VTInsert{
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+							},
+						},
+						Select: &vmv1.VTSelect{
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+							},
+						},
+						Storage: &vmv1.VTStorage{
+							RetentionPeriod: "1",
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+							},
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					By("updating the spec to trigger reconcile")
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Storage.RetentionPeriod = "2"
+						return k8sClient.Update(ctx, cr)
+					}, eventualDeploymentAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusExpanding, vmv1beta1.UpdateStatusOperational)
+			})
+
+			It("should transition operational→paused when paused", func() {
+				nsn.Name = "vtcluster-status-pause"
+				cr := &vmv1.VTCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1.VTClusterSpec{
+						Insert: &vmv1.VTInsert{},
+						Select: &vmv1.VTSelect{},
+						Storage: &vmv1.VTStorage{
+							RetentionPeriod: "1",
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+							},
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualExpandingTimeout, func() {
+					By("pausing the VTCluster")
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Paused = true
+						return k8sClient.Update(ctx, cr)
+					}, eventualStatefulsetAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusPaused)
+			})
+
+			It("should transition paused→operational when unpaused", func() {
+				nsn.Name = "vtcluster-status-unpause"
+				cr := &vmv1.VTCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      nsn.Name,
+					},
+					Spec: vmv1.VTClusterSpec{
+						Paused: true,
+						Insert: &vmv1.VTInsert{},
+						Select: &vmv1.VTSelect{},
+						Storage: &vmv1.VTStorage{
+							RetentionPeriod: "1",
+							CommonAppsParams: vmv1beta1.CommonAppsParams{
+								ReplicaCount: ptr.To[int32](1),
+							},
+						},
+					},
+				}
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualExpandingTimeout, func() {
+					Expect(k8sClient.Create(ctx, cr)).ToNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusPaused)
+
+				expectStatusAfterAction(ctx, &vmv1.VTClusterList{}, nsn, eventualStatefulsetAppReadyTimeout, func() {
+					By("unpausing the VTCluster")
+					Eventually(func() error {
+						if err := k8sClient.Get(ctx, nsn, cr); err != nil {
+							return err
+						}
+						cr.Spec.Paused = false
+						return k8sClient.Update(ctx, cr)
+					}, eventualStatefulsetAppReadyTimeout).WithContext(ctx).ShouldNot(HaveOccurred())
+				}, vmv1beta1.UpdateStatusOperational)
+			})
+		})
+	})
+})

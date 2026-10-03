@@ -1,0 +1,16 @@
+FROM registry.access.redhat.com/ubi9-minimal:9.8@sha256:c5478a52c410e71c53839923c83a1480199a1e74ce5736fe3e3a5578dc399102
+
+RUN INSTALL_PKGS=" \
+  rsync \
+  tar \
+  " && \
+  microdnf install -y $INSTALL_PKGS && \
+  microdnf clean all
+WORKDIR /
+
+ARG TARGETARCH
+COPY bin/must-gather_${TARGETARCH} /usr/bin/gather
+
+USER 65532:65532
+
+ENTRYPOINT ["/usr/bin/gather"]

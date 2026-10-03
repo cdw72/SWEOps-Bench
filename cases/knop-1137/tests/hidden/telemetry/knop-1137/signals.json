@@ -1,0 +1,29 @@
+{
+ "case": "knop-1137",
+ "confirmed": [
+  {
+   "kind": "restart_count",
+   "target": "knative-serving/knative-operator/knative-operator",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 1,
+    "fixed": 0
+   },
+   "note": "operator \u5d29\u6e83\u91cd\u542f 1 \u6b21,fixed 0"
+  },
+  {
+   "kind": "clog_sig",
+   "target": "panic: runtime error: invalid memory address",
+   "judge": "count_zero",
+   "values": {
+    "buggy": 1,
+    "fixed": 0
+   },
+   "note": "2026-09-10 \u8865:panic \u6808\u53ea\u5728 previous_logs/(\u53cc operator pod),\u4e3b\u65e5\u5fd7\u5d29\u524d\u65e0\u8f93\u51fa \u2192 \u65e7\u53e3\u5f84(\u53ea\u770b operator.log)\u5929\u7136\u6f0f\u3002\u8ba1\u6570 2\u21921:\u5e7d\u7075\u8fc7\u6ee4\u540e\u53cc operator pod \u4e4b\u4e00\u662f\u6b8b\u7559\u6587\u4ef6,\u5254\u9664\u540e\u4ecd >0"
+  }
+ ],
+ "variants": [
+  "buggy",
+  "fixed"
+ ]
+}

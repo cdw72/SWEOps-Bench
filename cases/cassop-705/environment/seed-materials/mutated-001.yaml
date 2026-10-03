@@ -1,0 +1,65 @@
+# cassop-705 fault generation (mutated-001) = mutated-000 + spec.configSecret.
+#
+# Byte-identical to mutated-000 except the one-key fault delta below:
+#   spec.configSecret: test-config
+# The single delta must stay exactly this -- mutated-001 is applied as an UPDATE
+# over the live object created from mutated-000, and cassandradatacenter_webhook
+# refuses allowMultipleNodesPerWorker changes after creation. Both files carry
+# `true`, so the update is a no-op on that field (same contract as cassop-696).
+#
+# The CR alone does not crash anything: a MISSING Secret is the graceful branch
+# (retrieveSecret fails -> "failed to get config secret" -> requeue). The panic
+# needs the Secret to EXIST with a nil Annotations map, because the bug is a
+# nil-map WRITE (secret.Annotations[api.DatacenterAnnotation] = dc.Name). That
+# Secret is created by the trigger at step 7, which is why the trigger uses
+# `kubectl create` and never `apply` -- client-side apply stamps
+# last-applied-configuration onto the object, Annotations stops being nil, and
+# the write lands on a real map, disarming the bug.
+# See mutated-000.yaml for why allowMultipleNodesPerWorker and the heap pair are here.
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: test-cluster
+spec:
+  allowMultipleNodesPerWorker: true
+  clusterName: development
+  config:
+    cassandra-yaml:
+      authenticator: PasswordAuthenticator
+      authorizer: CassandraAuthorizer
+      num_tokens: 16
+      role_manager: CassandraRoleManager
+  configSecret: test-config
+  managementApiAuth:
+    insecure: {}
+  podTemplateSpec:
+    spec:
+      containers:
+      - name: cassandra
+        env:
+        - name: MAX_HEAP_SIZE
+          value: 1G
+        - name: HEAP_NEWSIZE
+          value: 256M
+  racks:
+  - name: rack1
+  - name: rack2
+  - name: rack3
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: '2'
+      memory: 3Gi
+  serverType: cassandra
+  serverVersion: 4.1.2
+  size: 3
+  storageConfig:
+    cassandraDataVolumeClaimSpec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+      storageClassName: standard

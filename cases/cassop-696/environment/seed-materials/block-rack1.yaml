@@ -1,0 +1,58 @@
+# cassop-696 deterministic fault injection (#696/#777
+# precondition: exactly one rack's pod must be permanently
+# un-startable). The sts controller adopts PVCs by NAME, so a
+# pre-created PVC under the volumeClaimTemplate's claimed name
+# with a never-binding StorageClass keeps pod
+# development-test-cluster-rack1-sts-0 Pending forever. The
+# image-pull flake (buggy: rack1 ErrImagePull, fixed: rack2).
+#
+# ★2026-09-19 改名(原名 `sweops-blocked` + `sweops.local/
+# no-such-provisioner`)。为什么必须改:那个名字把**评测身份写进了
+# 被测集群** —— agent 一条 `kubectl get sc` 就知道自己在做题。
+# 实测代价(cassop-696 k=2 轨迹,逐字):agent 读到事件里的
+#   `waiting for a volume to be created, either by external
+#    provisioner "sweops.local/no-such-provisioner"`
+# 之后**直接去 grep /operator-src 找这个字符串**,当然找不到 ⇒ 判成
+# "外部注入的假东西,不是代码 bug" ⇒ `fix.diff` 三轮全 0 字节。
+# 而 GT(#777 startOneNodePerRack)要的恰恰是**真实运维判断**:算子不该
+# 因为某一个 rack 的 pod 永远起不来就把整个 DC 卡死。
+# 换名不改变机制(仍是 WFFC + 无对应 provisioner ⇒ 永不绑定),
+# 只把"这看起来像真故障"还回来:云上的 StorageClass 被贴到了本地
+# 机房 —— 真实事故原型,且照样一个字节都绑不上。
+# 已核:判官信号(cr_conditions/sts_ready)、poll-config 探针
+# (sts rack1 readyReplicas)、语料 telemetry/harbor-dataset 对旧名
+# **零引用** ⇒ 改名不需要重录任何东西。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cass-operator
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: server-data-development-test-cluster-rack1-sts-0
+  namespace: cass-operator
+  labels:
+    app.kubernetes.io/created-by: cass-operator
+    app.kubernetes.io/instance: cassandra-development
+    app.kubernetes.io/managed-by: cass-operator
+    app.kubernetes.io/name: cassandra
+    app.kubernetes.io/version: "4.1.2"
+    cassandra.datastax.com/cluster: development
+    cassandra.datastax.com/datacenter: test-cluster
+    cassandra.datastax.com/rack: rack1
+spec:
+  accessModes: ["ReadWriteOnce"]
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: gp2
