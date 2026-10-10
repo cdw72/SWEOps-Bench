@@ -93,7 +93,7 @@ done
 
 if [ -z "$FIRED" ]; then
   log "no crash after 3 cycles (window missed every time)"
-  # ★ Marker convention (harbor-work/recovery_judge.sh step 5c): when this
+  # ★ Marker convention (recovery judge, step 5c): when this
   #   script is used as a RE-ARM, these two bare tokens are what the judge
   #   greps -- REARM-FIRED = the fault was re-established on the build that is
   #   deployed right now; REARM-MISSED = it was not. They must not change the

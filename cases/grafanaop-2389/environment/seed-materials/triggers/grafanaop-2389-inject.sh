@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# grafanaop-2389 poll **注入步** —— 造出"部分 CRD 集"(gateway 组在、HTTPRoute kind 不在)。
+# grafanaop-2389 故障触发器 —— 造出"部分 CRD 集"(gateway 组在、HTTPRoute kind 不在)。
 #
-# 为什么需要这个脚本(2026-09-20):
+# 为什么需要这个脚本:
 #   本案的故障输入 `gateway-dummy-2389.yaml` 原来躺在种子的 `pre_manifests`(第 3 节)
-#   里 ⇒ **每一轮**(含 pre)从 t=0 就崩 ⇒ poll harness 认不出"注入步"、把它记成
-#   「种子自带故障」⇒ 拿 inject_after=0 + pre_health_cap=0 兜底,等于宣布本案没有
-#   健康期。overlay 的 `poll_skip_pre` 把 pre 相位的这份 manifest 摘掉之后,故障就
-#   得由**注入步**自己造出来 —— 就是本脚本。
+#   里 ⇒ 从 t=0 起每一轮都会崩,健康基线无从建立。把它从 pre 相位摘掉之后,故障
+#   得由本脚本在注入时刻自己造出来 —— 就是本脚本。
 #
 # 还有一件**只加 CRD 不够**的事:bug 在 manager **创建期**(把 HasGatewayAPI 的布尔量
 #   交给 GrafanaReconciler,控制器随即注册 HTTPRoute watch,这一步解析 RESTMapping

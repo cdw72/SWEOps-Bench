@@ -36,10 +36,17 @@ for rel, meta in sorted(mp.items()):
     r = subprocess.run(["docker", "pull", meta["dh"]])
     if r.returncode != 0:
         print("  pull FAILED"); failed.append(meta["dh"]); continue
-    s = subprocess.run(["docker", "save", "-o", dest, meta["dh"]])
-    iid = subprocess.run(["docker", "inspect", "-f", "{{.Id}}", meta["dh"]],
+    # Save under the upstream (orig) name, not the mirror name: the cases'
+    # manifests and CRs reference the upstream ref, and the recorded sha256
+    # was taken from a save of that ref. Without this the tar imports into
+    # containerd under cdddddd/opsrca-* and every pod goes ImagePullBackOff.
+    t = subprocess.run(["docker", "tag", meta["dh"], meta["orig"]])
+    if t.returncode != 0:
+        print("  tag FAILED"); failed.append(rel); continue
+    s = subprocess.run(["docker", "save", "-o", dest, meta["orig"]])
+    iid = subprocess.run(["docker", "inspect", "-f", "{{.Id}}", meta["orig"]],
                          capture_output=True, text=True).stdout.strip()
-    subprocess.run(["docker", "rmi", meta["dh"]], capture_output=True)
+    subprocess.run(["docker", "rmi", meta["dh"], meta["orig"]], capture_output=True)
     if s.returncode != 0:
         print("  save FAILED"); failed.append(rel); continue
     # content-address verification: image ID is stable across save/load/pull

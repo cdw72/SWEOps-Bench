@@ -7,7 +7,7 @@
           <pkg>/tests/hidden/detection_judge_core.py,
           评测端 import 它做同样的判定 —— 两边逐字同源,分数才可比。
 
-零依赖是硬要求:包内环境没有 harbor-work/,不许 import 宿主模块。
+零依赖是硬要求:包内环境不含本仓其它模块,不许 import 宿主模块。
 
 2026-09-18 用户定稿:检测判定**纯机械表,一个 LLM 都不叫**(当晚二次拍板
 「不要 llm judge detect 结果了 这部分都可以删掉了」⇒ LLM 件整体移除):

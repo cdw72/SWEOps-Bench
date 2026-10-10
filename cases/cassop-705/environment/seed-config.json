@@ -70,5 +70,5 @@
     ]
   ],
   "poll_fault_settle": 60,
-  "poll_why": "2026-09-20 修「健康相位可见带病」:机械盖章给的全序列前缀 poll_healthy_steps=2 把 mutated-001(spec.configSecret: test-config)也落进 pre,而那个 secret 由 trigger 才建 ⇒ pre 相位算子从 t=0 就刷 `Secret \"test-config\" not found` 优雅 requeue、DC 永 Updating、3 个 rack pod Running 不 Ready(readiness 500)——02:01/02:46/14:34 三场 k=0 全部 false-alarm,系统性。健康闸声明判据=Running(「3 个未就绪按约定不算不健康」)所以照样放行,agent 看到的却是一个 40 分钟没就绪的集群。正解 = 健康前缀截到第 1 步:mutated-000(bare datacenter)本就是沙箱保真返工调出来的健康基线(allowMultipleNodesPerWorker + heap 钉死 + 3 rack 全起);注入步 = poll_fault 重放 mutated-001(与原 cr_sequence 第 2 步同形:CR 更新在前)→ trigger cassop-705.sh 建 secret(nil-map panic 的必要输入,顺序 = 原 harbor 语义:CR 在前 secret 在后)→ 约 82s backoff 后 panic,trigger 的 300s 轮询照旧够用。故障语义零变化;SWEOPS_SEED_PHASE 未设的 harbor/smoke 路径不受影响。poll-config 无兜底键(inject_after 缺省 510、pre_health_cap 缺省 1800),不动;env_caps 12g 保持。"
+  "poll_why": "健康前缀截到 cr_sequence[:1](mutated-000,一个 bare datacenter 的干净基线)。用更长的前缀时 pre 相位会连 mutated-001 一起 apply,而它的 spec.configSecret 指向的 secret 要到 trigger 阶段才创建 ⇒ 算子从 t=0 起持续 requeue、DC 长时间 Updating、rack pod 只有 Running 不 Ready,基线看起来就是带病的。故障语义不变:trigger 仍在注入时刻重放 mutated-001 并创建 secret。"
 }

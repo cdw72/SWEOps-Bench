@@ -31,5 +31,9 @@ scripts/fetch_images.sh    # or: scripts/fetch_images.sh cassop-696
 ```bash
 uv tool install harbor     # the runner CLI (tested with v0.22.0)
 scripts/fetch_images.sh    # restore images (see above)
-harbor run --config ...    # point a harbor job config at cases/<slug>; see harbor run --help
+harbor run -c job.yaml -a claude-code -m <model>
 ```
+
+`-a` picks the agent backend — `claude-code` or `codex`, each pointed at your own
+endpoint with the usual env vars (`oracle` runs the reference solution instead) —
+and `-m` picks any model that endpoint serves; repeat it to compare models.

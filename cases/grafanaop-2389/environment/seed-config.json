@@ -24,5 +24,5 @@
   ],
   "poll_fault_script": "grafanaop-2389-inject.sh",
   "poll_fault_settle": 180,
-  "poll_why": "2026-09-20 修「被判种子自带」:本案的故障**不住在 cr_sequence** 里,而是由 pre_manifests 的 gateway-dummy-2389.yaml 造出来的(dummy CRD 让 gateway.networking.k8s.io 组在、HTTPRoute kind 不在 ⇒ buggy 算子在 manager 创建期解析 RESTMapping 失败 os.Exit(1) ⇒ CrashLoopBackOff)。住在第 3 节 ⇒ poll 的健康前缀(只换 cr_sequence)管不到 ⇒ 每一轮从 t=0 就崩 ⇒ harness 认不出注入步(原来只能拿 inject_after=0 + pre_health_cap=0 兜底,等于宣布本案没有健康期)。正解 = 把「造故障」从第 3 节挪到注入步:poll_skip_pre 摘掉 dummy CRD ⇒ 集群里没有 gateway 组 ⇒ 算子不崩 = **真健康期**;poll_fault_script 应用 CRD + 重启算子 ⇒ 崩。脚本抬头 files/triggers/grafanaop-2389-inject.sh 里有完整推导。★ 另:种子 seed-config 的 pre_ready 原本在等**被跳过的那个 CRD**,而 poll-split 守卫只清 pre_manifests/fault_verify、不清 pre_ready ⇒ 一跳过就会白等 600s 后 SystemExit(这就是 poll_skip_pre 这一族里只有本案用不了它的原因:otelop-5275 同样跳 pre_manifest,但它的 pre_ready 等的是 cert-manager,与被跳文件无关)。处置 = 把那条等待**搬进注入脚本**,不动共享守卫(改守卫要整批重发 60 包,会打乱在飞车道的契约戳),顺带守到真正要紧的相位。故障语义零变化:输入还是「部分 CRD 集」,只是出现时机从 t=0 变成注入时刻;oracle/smoke 路径(SWEOPS_SEED_PHASE 未设)完全不受影响。"
+  "poll_why": "本案的故障不住在 cr_sequence 里,而是由 pre_manifests 的 gateway-dummy-2389.yaml 造成的(dummy CRD 让组在、kind 不在 ⇒ buggy 算子 manager 创建期解析 RESTMapping 失败、CrashLoopBackOff)。健康的 cr_sequence 前缀覆盖不到这一节,所以该 manifest 在 pre 相位被跳过,改由 trigger 应用并重启算子,让 manager 重走启动路径(触发脚本抬头有完整推导)。种子 seed-config 的 pre_ready 原本等的是被跳过的那个 CRD,已一并搬进触发脚本。"
 }
