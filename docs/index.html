@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="SWEOps-Bench: 55 historical cloud incidents across 16 Kubernetes operator projects. Evaluate agents from detection to verified recovery.">
+  <title>SWEOps-Bench — Leaderboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="wordmark" href="#top" aria-label="SWEOps-Bench home"><svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M6 7h16M6 21h16M7 7v14m14-14v14M7 7l14 14" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor"/><rect x="17" y="3" width="8" height="8" rx="2" fill="currentColor"/><rect x="3" y="17" width="8" height="8" rx="2" fill="currentColor"/><rect x="17" y="17" width="8" height="8" rx="2" fill="currentColor"/></svg><span>SWEOps-Bench</span></a>
+      <nav aria-label="Main navigation"><a href="#leaderboard" class="nav-active">Leaderboard</a><a href="#benchmark">Benchmark</a><a href="#dataset">Dataset</a></nav>
+      <a class="header-paper" href="SWEOpsBench.pdf" target="_blank" rel="noopener">Paper <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <section class="intro" aria-labelledby="page-title">
+      <h1 id="page-title">SWEOps<span>-Bench</span></h1>
+      <p>Evaluating agents for end-to-end resolution of software-induced cloud incidents.</p>
+      <div class="resource-links"><a href="SWEOpsBench.pdf" target="_blank" rel="noopener">Read the paper <span aria-hidden="true">↗</span></a><a href="https://anonymous.4open.science/r/SWEOps-Bench-C221/" target="_blank" rel="noopener">Code &amp; data <span aria-hidden="true">↗</span></a></div>
+      <div class="benchmark-facts"><span><strong>55</strong> historical incidents</span><i aria-hidden="true"></i><span><strong>16</strong> operator projects</span><i aria-hidden="true"></i><span><strong>2 × 60 min</strong> phase budgets</span></div>
+    </section>
+
+    <section id="leaderboard" class="results-section" aria-labelledby="results-title">
+      <div class="section-heading">
+        <div class="heading-title"><h2 id="results-title">Leaderboard</h2><span class="count-badge" id="result-count">6 configurations</span></div>
+        <div class="table-tools"><label for="agent-filter" class="sr-only">Filter by agent</label><select id="agent-filter"><option value="all">All agents</option><option value="Claude Code">Claude Code</option><option value="Codex">Codex</option></select><button id="export-results" class="export-button" type="button"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m-3-3 3 3 3-3M3 11v3h10v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> CSV</button></div>
+      </div>
+      <div class="results-frame">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Agent results, scroll horizontally on small screens">
+          <table class="results-table">
+            <caption class="sr-only">SWEOps-Bench paper Table 3. All scores are percentages. Click a metric header to sort.</caption>
+            <colgroup><col class="rank-col"><col class="model-col"><col class="agent-col"><col class="recovery-col"><col span="6" class="metric-col"></colgroup>
+            <thead>
+              <tr class="header-groups"><th rowspan="2" scope="col" class="rank-head">#</th><th rowspan="2" scope="col" class="identity-head">Model</th><th rowspan="2" scope="col" class="identity-head">Agent</th><th rowspan="2" scope="col" class="recovery-head" data-key="rec" aria-sort="descending"><button data-sort="rec">Recovery <span class="sort-icon">↓</span></button></th><th colspan="3" scope="colgroup" class="group-boundary">Detection</th><th colspan="3" scope="colgroup" class="group-boundary">Root cause analysis</th></tr>
+              <tr class="header-metrics"><th scope="col" class="group-boundary" data-key="healthy"><button data-sort="healthy">Healthy <span class="sort-icon">↕</span></button></th><th scope="col" data-key="faulty"><button data-sort="faulty">Faulty <span class="sort-icon">↕</span></button></th><th scope="col" data-key="paired"><button data-sort="paired">Paired <span class="sort-icon">↕</span></button></th><th scope="col" class="group-boundary" data-key="file"><button data-sort="file">File <span class="sort-icon">↕</span></button></th><th scope="col" data-key="func"><button data-sort="func">Function <span class="sort-icon">↕</span></button></th><th scope="col" data-key="joint"><button data-sort="joint">Joint <span class="sort-icon">↕</span></button></th></tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <div class="table-footer"><span>All scores in % · higher is better · <b>bold</b> = column best</span><a href="SWEOpsBench.pdf#page=10" target="_blank" rel="noopener">Paper, Table 3 ↗</a></div>
+      </div>
+      <noscript><p>Enable JavaScript to display the results, or open Table 3 in the paper.</p></noscript>
+      <details class="metric-guide"><summary>How to read the scores</summary><div class="guide-grid"><p><strong>Recovery (REC)</strong>Agent declares recovery within budget and passes all applicable recovery checks, including fault clearance and functional verification.</p><p><strong>Detection</strong>Healthy and faulty state decisions; paired requires both to be correct in the same task.</p><p><strong>Root cause analysis</strong>File and function localization; joint requires both locations to be correct.</p></div></details>
+    </section>
+
+    <section id="benchmark" class="content-section" aria-labelledby="benchmark-title">
+      <div class="section-heading"><h2 id="benchmark-title">The benchmark</h2><span class="section-meta">Historical defects. Live clusters. Verified repairs.</span></div>
+      <figure class="paper-figure"><a href="assets/benchmark-construction.png" target="_blank" rel="noopener" aria-label="Open benchmark construction diagram at full size"><img src="assets/benchmark-construction.png" width="1760" height="590" loading="lazy" alt="Benchmark construction: collect historical issue–fix pairs, reconstruct runtime environments, validate buggy and fixed revisions, and package terminal tasks with live clusters and hidden evaluation checks."></a><figcaption>From historical issue–fix pairs to reproducible incident tasks. <a href="SWEOpsBench.pdf#page=5" target="_blank" rel="noopener">Figure 2 ↗</a></figcaption></figure>
+      <details class="coverage-details"><summary>Compare benchmark coverage</summary><div class="table-scroll" tabindex="0" role="region" aria-label="Benchmark coverage comparison"><table class="coverage-table"><thead><tr><th>Benchmark</th><th>Detection</th><th>RCA</th><th>Source repair</th><th>Runtime recovery</th><th>Full lifecycle</th></tr></thead><tbody><tr><td>OpsEval</td><td>—</td><td>✓*</td><td>—</td><td>—</td><td>—</td></tr><tr><td>AIOpsLab</td><td>✓</td><td>✓</td><td>—</td><td>✓</td><td>—</td></tr><tr><td>ITBench (SRE)</td><td>—</td><td>✓</td><td>—</td><td>✓</td><td>—</td></tr><tr><td>SREGym</td><td>—</td><td>✓</td><td>—</td><td>✓</td><td>—</td></tr><tr><td>SWE-bench</td><td>—</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr><tr class="our-benchmark"><td>SWEOps-Bench</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr></tbody></table></div><p class="detail-note">* OpsEval uses curated diagnostic Q&amp;A. Selected benchmarks from paper Table 1.</p></details>
+    </section>
+
+    <section id="dataset" class="content-section" aria-labelledby="dataset-title">
+      <div class="section-heading"><h2 id="dataset-title">Dataset</h2><span class="section-meta">55 tasks · counts from Figure 3</span></div>
+      <div class="distribution-grid"><figure class="distribution"><figcaption>Fault mechanisms</figcaption><div id="fault-chart" class="bar-chart"></div><div class="chart-axis"><span>0</span><span>5</span><span>10</span><span>15</span><span>20 tasks</span></div></figure><figure class="distribution"><figcaption>Runtime manifestations</figcaption><div id="symptom-chart" class="bar-chart"></div><div class="chart-axis"><span>0</span><span>5</span><span>10</span><span>15</span><span>20 tasks</span></div></figure></div>
+      <details class="project-details"><summary>Explore the 16 operator projects <span>55 incidents</span></summary><div class="project-grid" id="project-list"></div><p class="detail-note">Managed systems and incident counts from paper Table 2.</p></details>
+    </section>
+  </main>
+  <footer class="site-footer"><div class="footer-inner"><span>SWEOps-Bench</span><div><a href="SWEOpsBench.pdf" target="_blank" rel="noopener">Paper ↗</a><a href="https://anonymous.4open.science/r/SWEOps-Bench-C221/" target="_blank" rel="noopener">Code &amp; data ↗</a></div></div></footer>
+</body>
+</html>
